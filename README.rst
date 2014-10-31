@@ -1,6 +1,9 @@
 rdbms-subsetter
 ===============
 
+.. image:: https://travis-ci.org/18F/rdbms-subsetter.svg?branch=master
+    :target: https://travis-ci.org/18F/rdbms-subsetter
+
 Generate a random sample of rows from a relational database that preserves
 referential integrity - so long as constraints are defined, all parent rows
 will exist for child rows.
@@ -56,3 +59,8 @@ Then the DB-API2 module for your RDBMS; for example, for PostgreSQL,
 ::
 
     pip install psycopg2
+
+See also
+--------
+
+* `Jailer <http://jailer.sourceforge.net/home.htm>`_

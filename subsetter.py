@@ -58,11 +58,12 @@ def _n_rows(self):
 
 def _random_rows(self, n):
     existing_rows = self.n_rows() 
-    row_indexes = random.sample(range(self.n_rows()), n)     
-    for offset in row_indexes:
-        results = self.db.conn.execute(sa.sql.select([self,]).offset(offset).limit(1))
-        yield results.fetchone()                                          
- 
+    if existing_rows:
+        row_indexes = random.sample(range(self.n_rows()), n)     
+        for offset in row_indexes:
+            results = self.db.conn.execute(sa.sql.select([self,]).offset(offset).limit(1))
+            yield results.fetchone()                                          
+     
     
 class Db(object):
     
@@ -91,14 +92,18 @@ class Db(object):
         for fk in target_child.fks:
             target_parent = target_db.tables[fk['referred_table']]
             slct = sa.sql.select([target_parent,])
+            any_non_null_key_columns = False
             for (parent_col, child_col) in zip(fk['referred_columns'], 
                                                fk['constrained_columns']):
                 slct = slct.where(target_parent.c[parent_col] == 
                                   source_child_row[child_col])
-            target_parent_row = target_db.conn.execute(slct).first()
-            if not target_parent_row:
-                source_parent_row = self.conn.execute(slct).first()
-                self.create_row_in(source_parent_row, target_db, target_parent)
+                if source_child_row[child_col] is not None:
+                    any_non_null_key_columns = True
+            if any_non_null_key_columns:
+                target_parent_row = target_db.conn.execute(slct).first()
+                if not target_parent_row:
+                    source_parent_row = self.conn.execute(slct).first()
+                    self.create_row_in(source_parent_row, target_db, target_parent)
         ins = target_child.insert().values(**source_child_row)
         target_db.conn.execute(ins)
         
@@ -107,9 +112,9 @@ class Db(object):
             target_child = target_db.tables[source_child_name] 
             if logarithmic:
                 n_rows_desired = int(math.pow(10, math.log10(source_child.n_rows())
-                                                  * fraction))
+                                                  * fraction)) or 1
             else:
-                n_rows_desired = int(source_child.n_rows() * fraction)
+                n_rows_desired = int(source_child.n_rows() * fraction) or 1
             n_rows_already = target_child.n_rows()
             n_to_create = n_rows_desired - n_rows_already
             if n_to_create > 0:

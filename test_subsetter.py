@@ -15,6 +15,10 @@ class OverallTest(unittest.TestCase):
                   """CREATE TABLE landmark (name, city,
                                             FOREIGN KEY (city)
                                             REFERENCES city(name))""",
+                  """CREATE TABLE zeppelins (name, home_city,
+                                             FOREIGN KEY (home_city)
+                                             REFERENCES city(name))""", # NULL FKs
+                  """CREATE TABLE languages_better_than_python (name)""", # empty table
                   ]
         self.source_db_filename = tempfile.mktemp()
         self.source_db = sqlite3.connect(self.source_db_filename)
@@ -34,6 +38,8 @@ class OverallTest(unittest.TestCase):
         for params in (('Lift Bridge', 'Duluth'), ("Mendelson's", 'Dayton'), 
                        ('Trinity Church', 'Boston'), ('Michigan Tech', 'Houghton')):
             self.source_db.execute("INSERT INTO landmark VALUES (?, ?)", params)
+        for params in (('Graf Zeppelin', None), ('USS Los Angeles', None)):
+            self.source_db.execute("INSERT INTO zeppelins VALUES (?, ?)", params)
         self.source_db.commit()
         self.dest_db.commit()
     
@@ -54,4 +60,11 @@ class OverallTest(unittest.TestCase):
                                                      ON (c.state_abbrev = s.abbrev)""")
         joined = joined.fetchall()
         self.assertEqual(len(joined), 1)
-              
+             
+    def test_null_foreign_keys(self):
+        src = Db(self.source_sqla)
+        dest = Db(self.dest_sqla)
+        src.create_subset_in(dest, 0.25)
+        zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
+        self.assertEqual(len(zeppelins), 1)
+       
