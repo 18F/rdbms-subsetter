@@ -12,6 +12,9 @@ class OverallTest(unittest.TestCase):
                   """CREATE TABLE city (name, state_abbrev, 
                                         FOREIGN KEY (state_abbrev) 
                                         REFERENCES state(abbrev))""",
+                  """CREATE TABLE landmark (name, city,
+                                            FOREIGN KEY (city)
+                                            REFERENCES city(name))""",
                   ]
         self.source_db_filename = tempfile.mktemp()
         self.source_db = sqlite3.connect(self.source_db_filename)
@@ -28,6 +31,9 @@ class OverallTest(unittest.TestCase):
         for params in (('Duluth', 'MN'), ('Dayton', 'OH'), 
                        ('Boston', 'MA'), ('Houghton', 'MI')):
             self.source_db.execute("INSERT INTO city VALUES (?, ?)", params)
+        for params in (('Lift Bridge', 'Duluth'), ("Mendelson's", 'Dayton'), 
+                       ('Trinity Church', 'Boston'), ('Michigan Tech', 'Houghton')):
+            self.source_db.execute("INSERT INTO landmark VALUES (?, ?)", params)
         self.source_db.commit()
         self.dest_db.commit()
     
@@ -46,5 +52,6 @@ class OverallTest(unittest.TestCase):
         joined = self.dest_db.execute("""SELECT c.name, s.name
                                          FROM city c JOIN state s 
                                                      ON (c.state_abbrev = s.abbrev)""")
-        self.assertEqual(len(joined.fetchall()), 1)
+        joined = joined.fetchall()
+        self.assertEqual(len(joined), 1)
               
