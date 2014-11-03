@@ -44,6 +44,7 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
 
 """
 import argparse
+import logging
 from collections import OrderedDict
 import math
 import random
@@ -52,22 +53,26 @@ import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
 
-def _n_rows(self):
-    result = self.db.conn.execute(self.count()).fetchone()[0]
-    return result
+def _find_n_rows(self):
+    self.n_rows = self.db.conn.execute(self.count()).fetchone()[0]
 
 def _random_rows(self, n):
-    existing_rows = self.n_rows() 
-    if existing_rows:
-        row_indexes = random.sample(range(self.n_rows()), n)     
-        for offset in row_indexes:
-            results = self.db.conn.execute(sa.sql.select([self,]).offset(offset).limit(1))
-            yield results.fetchone()                                          
-     
+    """
+    Random sample of *approximate* size n
+    """
+    if self.n_rows:
+        if self.n_rows > 1000:
+            fraction = n / float(self.n_rows)
+            qry = sa.sql.select([self,]).where(sa.sql.functions.random() < fraction)
+        else:
+            qry = sa.sql.select([self,]).order_by(sa.sql.functions.random()).limit(n)
+        for row in self.db.conn.execute(qry):
+            yield row
     
 class Db(object):
     
     def __init__(self, sqla_conn):
+        self.sqla_conn = sqla_conn
         self.engine = sa.create_engine(sqla_conn)
         self.meta = sa.MetaData(bind=self.engine)
         self.meta.reflect()
@@ -77,17 +82,16 @@ class Db(object):
         for tbl in reversed(self.meta.sorted_tables):
             tbl.db = self
             tbl.fks = self.inspector.get_foreign_keys(tbl.name)
-            tbl.n_rows = types.MethodType(_n_rows, tbl)
+            tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
             tbl.random_rows = types.MethodType(_random_rows, tbl)
             self.tables[tbl.name] = tbl
+        logging.debug('Tables will be populated in this order: ' +
+                      ', '.join(self.tables.keys()))
+        
+    def __repr__(self):
+        return "Db('%s')" % self.sqla_conn
  
     def create_row_in(self, source_child_row, target_db, target_child):
-        child_slct = sa.sql.select([target_child,])
-        for (key, val) in dict(source_child_row).items():
-            child_slct = child_slct.where(target_child.c[key] == val)
-        existing_child_row = target_db.conn.execute(child_slct).first()
-        if existing_child_row:
-            return
         # make sure that all required rows are in parent table(s)
         for fk in target_child.fks:
             target_parent = target_db.tables[fk['referred_table']]
@@ -109,17 +113,28 @@ class Db(object):
         
     def create_subset_in(self, target_db, fraction, logarithmic=False):
         for (source_child_name, source_child) in self.tables.items():
+            source_child.find_n_rows()
             target_child = target_db.tables[source_child_name] 
+            target_child.find_n_rows()
             if logarithmic:
-                n_rows_desired = int(math.pow(10, math.log10(source_child.n_rows())
+                n_rows_desired = int(math.pow(10, math.log10(source_child.n_rows)
                                                   * fraction)) or 1
             else:
-                n_rows_desired = int(source_child.n_rows() * fraction) or 1
-            n_rows_already = target_child.n_rows()
-            n_to_create = n_rows_desired - n_rows_already
+                n_rows_desired = int(source_child.n_rows * fraction) or 1
+            n_to_create = n_rows_desired - target_child.n_rows
+            logging.info("%s in source has %d rows" % 
+                         (source_child_name, source_child.n_rows))
+            logging.info("%s in target has %d rows" % 
+                         (source_child_name, target_child.n_rows))
             if n_to_create > 0:
-                for source_child_row in source_child.random_rows(n_to_create):
+                logging.info("adding %d rows to target (desired total: %d)" % 
+                             (n_to_create, n_rows_desired))
+                for (n, source_child_row) in enumerate(source_child.random_rows(n_to_create)):
                     self.create_row_in(source_child_row, target_db, target_child)
+                    if n and (not n % 1000):
+                        logging.info("%s rows created so far in %s" % (n, source_child_name))
+                logging.info("%s rows created in %s" % (n+1, source_child_name))
+                    
                     
                     
 def fraction(n):
@@ -128,6 +143,16 @@ def fraction(n):
         return n
     raise argparse.ArgumentError('Fraction must be greater than 0 and no greater than 1')
 
+all_loglevels = "CRITICAL, FATAL, ERROR, DEBUG, INFO, WARN, WARNING"
+def loglevel(raw):
+    try:
+        return int(raw)
+    except ValueError:
+        upper = raw.upper()
+        if upper in all_loglevels:
+            return getattr(logging, upper)
+        raise NotImplementedError('log level "%s" not one of %s' % (raw, all_levels))
+   
 argparser = argparse.ArgumentParser(description='Generate consistent subset of a database')
 argparser.add_argument('source', help='SQLAlchemy connection string for data origin',
                        type=str)
@@ -137,9 +162,13 @@ argparser.add_argument('fraction', help='Proportion of rows to create in dest (0
                        type=fraction)
 argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; use 0.5 for fraction', 
                        action='store_true')
+argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_loglevels,
+                       default='INFO')
+
 
 def generate():
     args = argparser.parse_args()
+    logging.getLogger().setLevel(args.loglevel)
     source = Db(args.source)
     target = Db(args.dest)
     source.create_subset_in(target, args.fraction, args.logarithmic)

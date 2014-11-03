@@ -38,7 +38,8 @@ class OverallTest(unittest.TestCase):
         for params in (('Lift Bridge', 'Duluth'), ("Mendelson's", 'Dayton'), 
                        ('Trinity Church', 'Boston'), ('Michigan Tech', 'Houghton')):
             self.source_db.execute("INSERT INTO landmark VALUES (?, ?)", params)
-        for params in (('Graf Zeppelin', None), ('USS Los Angeles', None)):
+        for params in (('Graf Zeppelin', None), ('USS Los Angeles', None),
+                       ('Nordstern', None), ('Bodensee', None)):
             self.source_db.execute("INSERT INTO zeppelins VALUES (?, ?)", params)
         self.source_db.commit()
         self.dest_db.commit()

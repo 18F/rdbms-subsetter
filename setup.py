@@ -29,7 +29,7 @@ setup(
     license="CC0",
     keywords='database testing',
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha',
+        'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication',
         'Natural Language :: English',
@@ -37,6 +37,8 @@ setup(
         'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
+        'Topic :: Database',
+        'Topic :: Software Development :: Testing',
     ],
     entry_points={
         'console_scripts': [
