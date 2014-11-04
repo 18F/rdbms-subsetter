@@ -114,6 +114,9 @@ class Db(object):
     def create_subset_in(self, target_db, fraction, logarithmic=False):
         for (source_child_name, source_child) in self.tables.items():
             source_child.find_n_rows()
+            if not source_child.n_rows:
+                logging.warn("No source rows for %s, skipping" % source_child_name)
+                continue
             target_child = target_db.tables[source_child_name] 
             target_child.find_n_rows()
             if logarithmic:
