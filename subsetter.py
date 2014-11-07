@@ -131,8 +131,6 @@ class Db(object):
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
-            if self.has_duplicate_foreign_keys(tbl.name):
-                raise Exception("Table %s has duplicate foreign keys" % tbl.name)
             tbl.db = self
             tbl.fks = self.inspector.get_foreign_keys(tbl.name)
             tbl.pk = self.inspector.get_primary_keys(tbl.name)
@@ -160,14 +158,6 @@ class Db(object):
 
     GUARANTEED_CHILDREN = 8
                               
-    def has_duplicate_foreign_keys(self, name):
-        all_keys = self.inspector.get_foreign_keys(name)
-        anon_keys = [{k: fk[k] for k in fk if k not in ('name','options')} 
-                     for fk in all_keys]
-        hashable = [tuple((k, tuple(sorted(v)) if isinstance(v, list) else v) 
-                           for (k,v) in fk.items()) for fk in anon_keys]
-        return len(hashable) > len(set(hashable))       
-        
     def create_row_in(self, source_row, target_db, target, depth, prompted_by=None):
         logging.debug('create_row_in %s:%s depth %d' % 
                       (target.name, target.pk_val(source_row), depth))
@@ -244,7 +234,6 @@ class Db(object):
             target = target_db.tables[source_name] 
             rows_already_created = target.rows_already_created
             if source_name in args.force_rows:
-                import ipdb; ipdb.set_trace()
                 for pk in args.force_rows[source_name]:
                     source_row = source.by_pk(pk)  
                     if source_row:
