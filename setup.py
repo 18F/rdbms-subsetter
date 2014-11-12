@@ -18,7 +18,7 @@ history = open(os.path.join(curdir, 'HISTORY.rst')).read().replace('.. :changelo
 
 setup(
     name='rdbms-subsetter',
-    version='0.1.0',
+    version='0.1.1',
     description='Generate consistent subset of an RDBMS',
     long_description=readme + '\n\n' + history,
     author='Catherine Devlin',
