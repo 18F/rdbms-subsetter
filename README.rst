@@ -2,7 +2,8 @@ rdbms-subsetter
 ===============
 
 .. image:: https://travis-ci.org/18F/rdbms-subsetter.svg?branch=master
-    :target: https://travis-ci.org/18F/rdbms-subsetter
+   :target: https://travis-ci.org/18F/rdbms-subsetter
+
 Generate a random sample of rows from a relational database that preserves
 referential integrity - so long as constraints are defined, all parent rows
 will exist for child rows.
@@ -23,7 +24,7 @@ Valid SQLAlchemy connection strings are described
 
 ``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
 required by its foreign keys.  It will also *try* to include most child rows belonging
-to each parent row (up to the supplied --children parameter, default 25 each), but it
+to each parent row (up to the supplied ``--children`` parameter, default 25 each), but it
 can't make any promises.  (Demanding all children can lead to infinite propagation in
 thoroughly interlinked databases, as every child record demands new parent records,
 which demand new child records, which demand new parent records...)
@@ -83,6 +84,12 @@ Then the DB-API2 module for your RDBMS; for example, for PostgreSQL,
 ::
 
     pip install psycopg2
+
+Memory
+------
+
+Will consume memory roughly equal to the size of the *extracted* database.  
+(Not the size of the *source* database!)
 
 See also
 --------

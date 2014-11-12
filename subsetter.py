@@ -19,7 +19,7 @@ Valid SQLAlchemy connection strings are described
 
 ``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
 required by its foreign keys.  It will also *try* to include most child rows belonging
-to each parent row (up to the supplied --children parameter, default 25 each), but it
+to each parent row (up to the supplied ``--children`` parameter, default 25 each), but it
 can't make any promises.  (Demanding all children can lead to infinite propagation in
 thoroughly interlinked databases, as every child record demands new parent records,
 which demand new child records, which demand new parent records...)

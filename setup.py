@@ -12,8 +12,9 @@ if sys.argv[-1] == 'publish':
     os.system('python setup.py sdist upload')
     sys.exit()
 
-readme = open('README.rst').read()
-history = open('HISTORY.rst').read().replace('.. :changelog:', '')
+curdir = os.path.dirname(os.path.realpath(__file__))
+readme = open(os.path.join(curdir, 'README.rst')).read()
+history = open(os.path.join(curdir, 'HISTORY.rst')).read().replace('.. :changelog:', '')
 
 setup(
     name='rdbms-subsetter',
@@ -31,7 +32,7 @@ setup(
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Intended Audience :: Developers',
-        'License :: OSI Approved :: License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication',
+        'License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication',
         'Natural Language :: English',
         'Programming Language :: Python :: 2',
         'Programming Language :: Python :: 2.7',

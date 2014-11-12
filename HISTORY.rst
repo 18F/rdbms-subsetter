@@ -3,3 +3,7 @@
 
 * Initial release
 
+0.1.1 (2014-11-12)
+++++++++++++++++++
+
+* Fixing ``pip`` installation problem
