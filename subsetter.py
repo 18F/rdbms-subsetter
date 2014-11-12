@@ -123,13 +123,14 @@ def _by_pk(self, pk):
 def _exists(self, **kw):
     return bool(self.db.conn.execute(self.filtered_by(**kw)).first())
 
-def _incompleteness_score(self):
-    return ( (self.n_rows_desired - self.n_rows + len(self.requested))
-             / float(self.source.n_rows or 1) )
+def _completeness_score(self):
+    return ( (self.n_rows / (self.n_rows_desired or 1))**0.33 - 
+             (len(self.requested) / float(self.n_rows or 1 )) * 5 )
 
 class Db(object):
 
     def __init__(self, sqla_conn, args):
+        self.args = args
         self.sqla_conn = sqla_conn
         self.engine = sa.create_engine(sqla_conn)
         self.meta = sa.MetaData(bind=self.engine)
@@ -164,14 +165,18 @@ class Db(object):
             tbl.next_row = types.MethodType(_next_row, tbl)
             target = target_db.tables[tbl_name]
             target.requested = []
-            if args.logarithmic:
-                target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
-                                            * args.fraction)) or 1
+            if tbl.n_rows:
+                if args.logarithmic:
+                    target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
+                                                * args.fraction)) or 1
+                else:
+                    target.n_rows_desired = int(tbl.n_rows * args.fraction) or 1
             else:
-                target.n_rows_desired = int(tbl.n_rows * args.fraction) or 1
+                target.n_rows_desired = 0
             target.source = tbl
             tbl.target = target
-            target.incompleteness_score = types.MethodType(_incompleteness_score, target)
+            target.completeness_score = types.MethodType(_completeness_score, target)
+            logging.debug("assigned methods to %s" % target.name)
             
     def create_requested(self, source, target_db, rows_desired):
         target = target_db.tables[source.name]
@@ -211,7 +216,9 @@ class Db(object):
         target_db.conn.execute(ins)
         target.n_rows += 1
 
-        for child_fk in target.child_fks:
+        child_fks = random.sample(target.child_fks, min(len(target.child_fks, 
+                                                            self.args.children)))
+        for child_fk in child_fks:
             child = self.tables[child_fk['constrained_table']]
             slct = sa.sql.select([child,])
             for (child_col, this_col) in zip(child_fk['constrained_columns'], 
@@ -221,8 +228,7 @@ class Db(object):
             if desired_row:
                 child.target.requested.append(desired_row) 
 
-    def create_subset_in(self, target_db, args):
-        self.args = args
+    def create_subset_in(self, target_db):
         
         for (tbl_name, pks) in args.force_rows.items():
             for pk in pks:
@@ -235,14 +241,17 @@ class Db(object):
       
         while True: 
             targets = sorted(target_db.tables.values(), 
-                             key=lambda t: t.incompleteness_score())
+                             key=lambda t: t.completeness_score())
             try:
-                target = targets.pop()
+                target = targets.pop(0)
                 while not target.source.n_rows:
-                    target = targets.pop()
+                    target = targets.pop(0)
             except IndexError: # pop failure, no more tables
                 return
-            if target.incompleteness_score() < 0.05:
+            logging.info("lowest completeness score (in %s) at %f" %
+                         (target.name, target.completeness_score()))
+            if target.completeness_score() > 0.95:
+                import ipdb; ipdb.set_trace()
                 return
             source_row = target.source.next_row()
             self.create_row_in(source_row, target_db, target)
@@ -277,7 +286,9 @@ argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_
                        default='INFO')
 argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to force into dest',
                        type=str.lower, action='append')
-
+argparser.add_argument('-c', '--children', 
+                       help='Max number of child rows to attempt to pull for each parent row',
+                       type=int, default=25)
 
 def generate():
     args = argparser.parse_args()
@@ -290,5 +301,5 @@ def generate():
     logging.getLogger().setLevel(args.loglevel)
     source = Db(args.source, args)
     target = Db(args.dest, args)
-    source.assign_target(target, args)
+    source.assign_target(target)
     source.create_subset_in(target, args)
