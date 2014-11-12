@@ -17,15 +17,17 @@ Example::
 Valid SQLAlchemy connection strings are described 
 `here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls#database-urls>`_.
 
-The destination database will have <fraction> of the source's rows for child
-tables.  Parent tables will have more rows - enough to meet all the child 
-tables' referential integrity constraints.
+``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
+required by its foreign keys.  It will also *try* to include most child rows belonging
+to each parent row (up to the supplied --children parameter, default 25 each), but it
+can't make any promises.  (Demanding all children can lead to infinite propagation in
+thoroughly interlinked databases, as every child record demands new parent records,
+which demand new child records, which demand new parent records...)
 
 When row numbers in your tables vary wildly (tens to billions, for example),
-consider using 
-the ``-l`` flag reduces row counts by a logarithmic formula.  If ``f`` is
+consider using the ``-l`` flag, which reduces row counts by a logarithmic formula.  If ``f`` is
 the fraction specified, and ``-l`` is set, and the original table has ``n`` rows,
-then each new table's rowcount will be::
+then each new table's row target will be::
 
     math.pow(10, math.log10(n)*f)
 
@@ -158,7 +160,7 @@ class Db(object):
     def __repr__(self):
         return "Db('%s')" % self.sqla_conn
 
-    def assign_target(self, target_db, args):
+    def assign_target(self, target_db):
         for (tbl_name, tbl) in self.tables.items():
             tbl._random_row_gen_fn = types.MethodType(_random_row_gen_fn, tbl)
             tbl.random_rows = tbl._random_row_gen_fn()
@@ -166,11 +168,11 @@ class Db(object):
             target = target_db.tables[tbl_name]
             target.requested = []
             if tbl.n_rows:
-                if args.logarithmic:
+                if self.args.logarithmic:
                     target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
-                                                * args.fraction)) or 1
+                                                * self.args.fraction)) or 1
                 else:
-                    target.n_rows_desired = int(tbl.n_rows * args.fraction) or 1
+                    target.n_rows_desired = int(tbl.n_rows * self.args.fraction) or 1
             else:
                 target.n_rows_desired = 0
             target.source = tbl
@@ -216,8 +218,8 @@ class Db(object):
         target_db.conn.execute(ins)
         target.n_rows += 1
 
-        child_fks = random.sample(target.child_fks, min(len(target.child_fks, 
-                                                            self.args.children)))
+        child_fks = random.sample(target.child_fks, min(len(target.child_fks), 
+                                                            self.args.children))
         for child_fk in child_fks:
             child = self.tables[child_fk['constrained_table']]
             slct = sa.sql.select([child,])
@@ -229,12 +231,13 @@ class Db(object):
                 child.target.requested.append(desired_row) 
 
     def create_subset_in(self, target_db):
-        
-        for (tbl_name, pks) in args.force_rows.items():
+       
+        for (tbl_name, pks) in self.args.force_rows.items():
+            source = self.tables[tbl_name]
             for pk in pks:
                 source_row = source.by_pk(pk)  
                 if source_row:
-                    self.create_row_in(source_row, target_db, target)
+                    self.create_row_in(source_row, target_db, source.target)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source_name, pk))
@@ -250,8 +253,7 @@ class Db(object):
                 return
             logging.info("lowest completeness score (in %s) at %f" %
                          (target.name, target.completeness_score()))
-            if target.completeness_score() > 0.95:
-                import ipdb; ipdb.set_trace()
+            if target.completeness_score() > 0.97:
                 return
             source_row = target.source.next_row()
             self.create_row_in(source_row, target_db, target)
@@ -302,4 +304,4 @@ def generate():
     source = Db(args.source, args)
     target = Db(args.dest, args)
     source.assign_target(target)
-    source.create_subset_in(target, args)
+    source.create_subset_in(target)

@@ -14,26 +14,28 @@ but how often do you need to generate a test/development database?
 Usage::
 
     rdbms-subsetter <source SQLAlchemy connection string> <destination connection string> <fraction of rows to use>
-   
+
 Example::
 
     rdbms-subsetter postgresql://:@/bigdb postgresql://:@/littledb 0.05
-    
+
 Valid SQLAlchemy connection strings are described 
 `here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls#database-urls>`_.
 
-The destination database will have <fraction> of the source's rows for child
-tables.  Parent tables will have more rows - enough to meet all the child 
-tables' referential integrity constraints.
+``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
+required by its foreign keys.  It will also *try* to include most child rows belonging
+to each parent row (up to the supplied --children parameter, default 25 each), but it
+can't make any promises.  (Demanding all children can lead to infinite propagation in
+thoroughly interlinked databases, as every child record demands new parent records,
+which demand new child records, which demand new parent records...)
 
 When row numbers in your tables vary wildly (tens to billions, for example),
-consider using 
-the ``-l`` flag reduces row counts by a logarithmic formula.  If ``f`` is
+consider using the ``-l`` flag, which reduces row counts by a logarithmic formula.  If ``f`` is
 the fraction specified, and ``-l`` is set, and the original table has ``n`` rows,
-then each new table's rowcount will be::
+then each new table's row target will be::
 
     math.pow(10, math.log10(n)*f)
-    
+
 A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
 1,000,000 to 1,000,000, and 1,000,000,000 to 31,622.
 
@@ -46,6 +48,7 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
     pg_dump --schema-only -f schemadump.sql source_database
     createdb partial_database
     psql -f schemadump.sql partial_database
+
 
 Installing
 ----------
