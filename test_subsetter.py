@@ -4,6 +4,13 @@ import tempfile
 import sqlite3
 from subsetter import Db
 
+class DummyArgs(object):
+    logarithmic = False
+    fraction = 0.25
+    force_rows = {}
+    children = 25
+
+dummy_args = DummyArgs()
 
 class OverallTest(unittest.TestCase):
    
@@ -51,9 +58,10 @@ class OverallTest(unittest.TestCase):
         os.unlink(self.dest_db_filename)
 
     def test_parents_kept(self):
-        src = Db(self.source_sqla)
-        dest = Db(self.dest_sqla)
-        src.create_subset_in(dest, 0.25)
+        src = Db(self.source_sqla, dummy_args)
+        dest = Db(self.dest_sqla, dummy_args)
+        src.assign_target(dest)
+        src.create_subset_in(dest)
         cities = self.dest_db.execute("SELECT * FROM city").fetchall()
         self.assertEqual(len(cities), 1)
         joined = self.dest_db.execute("""SELECT c.name, s.name
@@ -63,9 +71,10 @@ class OverallTest(unittest.TestCase):
         self.assertEqual(len(joined), 1)
              
     def test_null_foreign_keys(self):
-        src = Db(self.source_sqla)
-        dest = Db(self.dest_sqla)
-        src.create_subset_in(dest, 0.25)
+        src = Db(self.source_sqla, dummy_args)
+        dest = Db(self.dest_sqla, dummy_args)
+        src.assign_target(dest)
+        src.create_subset_in(dest)
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 1)
        

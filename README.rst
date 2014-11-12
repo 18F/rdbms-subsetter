@@ -18,17 +18,20 @@ Example::
 
     rdbms-subsetter postgresql://:@/bigdb postgresql://:@/littledb 0.05
 
-Valid SQLAlchemy connection strings are described
+Valid SQLAlchemy connection strings are described 
 `here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls#database-urls>`_.
 
-The destination database will have approximately <fraction> of the source's
-rows for parent tables.  Actual numbers may vary wildly, as related rows are
-loaded to satisfy foreign key relationships.
+``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
+required by its foreign keys.  It will also *try* to include most child rows belonging
+to each parent row (up to the supplied --children parameter, default 25 each), but it
+can't make any promises.  (Demanding all children can lead to infinite propagation in
+thoroughly interlinked databases, as every child record demands new parent records,
+which demand new child records, which demand new parent records...)
 
 When row numbers in your tables vary wildly (tens to billions, for example),
-consider using the ``-l`` flag reduces row counts by a logarithmic formula.
-If ``f`` is the fraction specified, and ``-l`` is set, and the original table
-has ``n`` rows, then each new table's rowcount will be::
+consider using the ``-l`` flag, which reduces row counts by a logarithmic formula.  If ``f`` is
+the fraction specified, and ``-l`` is set, and the original table has ``n`` rows,
+then each new table's row target will be::
 
     math.pow(10, math.log10(n)*f)
 
@@ -66,6 +69,7 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
 Currently rdbms-subsetter takes no account of schema names and simply assumes all
 tables live in the same schema.  This will probably cause horrible errors if used
 against databases where foreign keys span schemas.
+=======
 
 Installing
 ----------
