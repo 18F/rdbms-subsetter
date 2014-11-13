@@ -71,7 +71,7 @@ import types
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0

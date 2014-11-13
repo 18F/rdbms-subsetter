@@ -14,11 +14,10 @@ if sys.argv[-1] == 'publish':
 
 curdir = os.path.dirname(os.path.realpath(__file__))
 readme = open(os.path.join(curdir, 'README.rst')).read()
-history = open(os.path.join(curdir, 'HISTORY.rst')).read().replace('.. :changelog:', '')
 
 setup(
     name='rdbms-subsetter',
-    version='0.1.1',
+    version='0.1.2',
     description='Generate consistent subset of an RDBMS',
     long_description=readme + '\n\n' + readme,
     author='Catherine Devlin',
@@ -31,7 +30,6 @@ setup(
     keywords='database testing',
     classifiers=[
         'Development Status :: 3 - Alpha',
-        'Intended Audience :: Developers',
         'License :: CC0 1.0 Universal (CC0 1.0) Public Domain Dedication',
         'Natural Language :: English',
         'Programming Language :: Python :: 2',
@@ -46,5 +44,4 @@ setup(
             'rdbms-subsetter = subsetter:generate',
         ]
     },
-    package_data={'': ['HISTORY.rst',]}
 )
