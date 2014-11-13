@@ -20,7 +20,7 @@ setup(
     name='rdbms-subsetter',
     version='0.1.1',
     description='Generate consistent subset of an RDBMS',
-    long_description=readme + '\n\n' + history,
+    long_description=readme + '\n\n' + readme,
     author='Catherine Devlin',
     author_email='catherine.devlin@gsa.gov',
     url='https://github.com/18f/https://github.com/18F/rdbms-subsetter',
@@ -45,5 +45,6 @@ setup(
         'console_scripts': [
             'rdbms-subsetter = subsetter:generate',
         ]
-    }    
+    },
+    package_data={'': ['HISTORY.rst',]}
 )

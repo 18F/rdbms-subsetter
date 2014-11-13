@@ -19,7 +19,7 @@ Valid SQLAlchemy connection strings are described
 
 ``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
 required by its foreign keys.  It will also *try* to include most child rows belonging
-to each parent row (up to the supplied ``--children`` parameter, default 25 each), but it
+to each parent row (up to the supplied ``--children`` parameter, default 5 each), but it
 can't make any promises.  (Demanding all children can lead to infinite propagation in
 thoroughly interlinked databases, as every child record demands new parent records,
 which demand new child records, which demand new parent records...)
@@ -196,7 +196,16 @@ class Db(object):
             tbl.target = target
             target.completeness_score = types.MethodType(_completeness_score, target)
             logging.debug("assigned methods to %s" % target.name)
-            
+              
+    def confirm(self):
+        for tbl_name in sorted(self.tables):
+            tbl = self.tables[tbl_name]
+            print("Create %d rows from %d in %s" % (tbl.target.n_rows_desired, tbl.n_rows, tbl_name))
+        if self.args.yes:
+            return True
+        response = input("Proceed? (Y/n) ").strip().lower()
+        return (not response) or (response[0] == 'y')
+        
     def create_requested(self, source, target_db, rows_desired):
         target = target_db.tables[source.name]
         while target.n_rows < rows_desired:  
@@ -207,7 +216,7 @@ class Db(object):
             self.create_row_in(row, target_db, target)
 
 
-    def create_row_in(self, source_row, target_db, target):
+    def create_row_in(self, source_row, target_db, target, limit_children=True):
         logging.debug('create_row_in %s:%s ' % 
                       (target.name, target.pk_val(source_row)))
 
@@ -235,16 +244,15 @@ class Db(object):
         target_db.conn.execute(ins)
         target.n_rows += 1
 
-        child_fks = random.sample(target.child_fks, min(len(target.child_fks), 
-                                                            self.args.children))
-        for child_fk in child_fks:
+        for child_fk in target.child_fks:
             child = self.tables[child_fk['constrained_table']]
             slct = sa.sql.select([child,])
             for (child_col, this_col) in zip(child_fk['constrained_columns'], 
                                              child_fk['referred_columns']):
                 slct = slct.where(child.c[child_col] == source_row[this_col])
-            desired_row = self.conn.execute(slct).first()
-            if desired_row:
+            if limit_children:
+                slct = slct.limit(self.args.children)
+            for desired_row in self.conn.execute(slct):
                 child.target.requested.append(desired_row) 
 
     def create_subset_in(self, target_db):
@@ -254,7 +262,7 @@ class Db(object):
             for pk in pks:
                 source_row = source.by_pk(pk)  
                 if source_row:
-                    self.create_row_in(source_row, target_db, source.target)
+                    self.create_row_in(source_row, target_db, source.target, limit_children=False)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source_name, pk))
@@ -307,7 +315,8 @@ argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to 
                        type=str.lower, action='append')
 argparser.add_argument('-c', '--children', 
                        help='Max number of child rows to attempt to pull for each parent row',
-                       type=int, default=25)
+                       type=int, default=5)
+argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
     args = argparser.parse_args()
@@ -321,4 +330,5 @@ def generate():
     source = Db(args.source, args)
     target = Db(args.dest, args)
     source.assign_target(target)
-    source.create_subset_in(target)
+    if source.confirm():
+        source.create_subset_in(target)
