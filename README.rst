@@ -70,7 +70,6 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
 Currently rdbms-subsetter takes no account of schema names and simply assumes all
 tables live in the same schema.  This will probably cause horrible errors if used
 against databases where foreign keys span schemas.
-=======
 
 Installing
 ----------
@@ -90,6 +89,11 @@ Memory
 
 Will consume memory roughly equal to the size of the *extracted* database.  
 (Not the size of the *source* database!)
+
+Development
+-----------
+
+https://github.com/18F/rdbms-subsetter
 
 See also
 --------
