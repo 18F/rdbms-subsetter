@@ -39,6 +39,7 @@ setup(
         'Topic :: Database',
         'Topic :: Software Development :: Testing',
     ],
+    py_modules=['subsetter'],
     entry_points={
         'console_scripts': [
             'rdbms-subsetter = subsetter:generate',

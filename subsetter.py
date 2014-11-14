@@ -19,7 +19,7 @@ Valid SQLAlchemy connection strings are described
 
 ``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
 required by its foreign keys.  It will also *try* to include most child rows belonging
-to each parent row (up to the supplied ``--children`` parameter, default 5 each), but it
+to each parent row (up to the supplied ``--children`` parameter, default 3 each), but it
 can't make any promises.  (Demanding all children can lead to infinite propagation in
 thoroughly interlinked databases, as every child record demands new parent records,
 which demand new child records, which demand new parent records...)
@@ -64,7 +64,7 @@ against databases where foreign keys span schemas.
 """
 import argparse
 import logging
-from collections import OrderedDict
+from collections import OrderedDict, deque
 import math
 import random
 import types
@@ -116,7 +116,7 @@ def _random_row_gen_fn(self):
 
 def _next_row(self):
     try:
-        return self.target.requested.pop(0)
+        return self.target.requested.popleft()
     except IndexError:
         try:
             return next(self.random_rows)
@@ -143,9 +143,10 @@ def _exists(self, **kw):
     return bool(self.db.conn.execute(self.filtered_by(**kw)).first())
 
 def _completeness_score(self):
-    return ( (self.n_rows / (self.n_rows_desired or 1))**0.33 - 
-             (len(self.requested) / float(self.n_rows or 1 )) * 5 )
-
+    result = ( (self.n_rows / (self.n_rows_desired or 1))**0.33 - 
+              (len(self.requested) / float(self.n_rows or 1 )) )
+    return result
+                  
 class Db(object):
 
     def __init__(self, sqla_conn, args):
@@ -183,7 +184,7 @@ class Db(object):
             tbl.random_rows = tbl._random_row_gen_fn()
             tbl.next_row = types.MethodType(_next_row, tbl)
             target = target_db.tables[tbl_name]
-            target.requested = []
+            target.requested = deque()
             if tbl.n_rows:
                 if self.args.logarithmic:
                     target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
@@ -206,15 +207,6 @@ class Db(object):
         response = input("Proceed? (Y/n) ").strip().lower()
         return (not response) or (response[0] == 'y')
         
-    def create_requested(self, source, target_db, rows_desired):
-        target = target_db.tables[source.name]
-        while target.n_rows < rows_desired:  
-            try:
-                row = source.requested.pop(0)
-            except IndexError:
-                return
-            self.create_row_in(row, target_db, target)
-
 
     def create_row_in(self, source_row, target_db, target, limit_children=True):
         logging.debug('create_row_in %s:%s ' % 
@@ -252,8 +244,11 @@ class Db(object):
                 slct = slct.where(child.c[child_col] == source_row[this_col])
             if limit_children:
                 slct = slct.limit(self.args.children)
-            for desired_row in self.conn.execute(slct):
-                child.target.requested.append(desired_row) 
+            for (n, desired_row )in enumerate(self.conn.execute(slct)):
+                if n == 0:
+                    child.target.requested.appendleft(desired_row) 
+                else:
+                    child.target.requested.append(desired_row) 
 
     def create_subset_in(self, target_db):
        
@@ -265,7 +260,7 @@ class Db(object):
                     self.create_row_in(source_row, target_db, source.target, limit_children=False)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
-                                 "could not create" % (source_name, pk))
+                                 "could not create" % (source.name, pk))
       
         while True: 
             targets = sorted(target_db.tables.values(), 
@@ -276,6 +271,11 @@ class Db(object):
                     target = targets.pop(0)
             except IndexError: # pop failure, no more tables
                 return
+            logging.debug("total n_rows in target: %d" % 
+                          sum((t.n_rows for t in target_db.tables.values())))
+            logging.debug("target tables with 0 n_rows: %s" % 
+                          ", ".join(t.name for t in target_db.tables.values() 
+                                    if not t.n_rows))
             logging.info("lowest completeness score (in %s) at %f" %
                          (target.name, target.completeness_score()))
             if target.completeness_score() > 0.97:
@@ -298,7 +298,7 @@ def loglevel(raw):
         upper = raw.upper()
         if upper in all_loglevels:
             return getattr(logging, upper)
-        raise NotImplementedError('log level "%s" not one of %s' % (raw, all_levels))
+        raise NotImplementedError('log level "%s" not one of %s' % (raw, all_loglevels))
 
 argparser = argparse.ArgumentParser(description='Generate consistent subset of a database')
 argparser.add_argument('source', help='SQLAlchemy connection string for data origin',
@@ -315,7 +315,7 @@ argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to 
                        type=str.lower, action='append')
 argparser.add_argument('-c', '--children', 
                        help='Max number of child rows to attempt to pull for each parent row',
-                       type=int, default=5)
+                       type=int, default=3)
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
