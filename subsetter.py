@@ -3,7 +3,7 @@ Generate a random sample of rows from a relational database that preserves
 referential integrity - so long as constraints are defined, all parent rows
 will exist for child rows.
 
-Good for creating test/development databases from production.  It's slow, 
+Good for creating test/development databases from production.  It's slow,
 but how often do you need to generate a test/development database?
 
 Usage::
@@ -14,15 +14,16 @@ Example::
 
     rdbms-subsetter postgresql://:@/bigdb postgresql://:@/littledb 0.05
 
-Valid SQLAlchemy connection strings are described 
+Valid SQLAlchemy connection strings are described
 `here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls#database-urls>`_.
 
-``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
+``rdbms-subsetter`` promises that each child row will have whatever parent rows are
 required by its foreign keys.  It will also *try* to include most child rows belonging
 to each parent row (up to the supplied ``--children`` parameter, default 3 each), but it
 can't make any promises.  (Demanding all children can lead to infinite propagation in
 thoroughly interlinked databases, as every child record demands new parent records,
-which demand new child records, which demand new parent records...)
+which demand new child records, which demand new parent records...
+so increase ``--children`` with caution.)
 
 When row numbers in your tables vary wildly (tens to billions, for example),
 consider using the ``-l`` flag, which reduces row counts by a logarithmic formula.  If ``f`` is
@@ -34,18 +35,10 @@ then each new table's row target will be::
 A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
 1,000,000 to 1,000,000, and 1,000,000,000 to 31,622.
 
-rdbms-subsetter guarantees that your child rows have the necessary parent rows to
-satisfy the foreign keys.  It also *tries* to ensure that your parent rows have
-child keys, but that becomes tricky when you have a complex web of foreign keys.
-Creating children for a parent may require creating more parent rows in multiple
-tables, each of which may call for their own children... that process can propagate
-endlessly.  rdbms-subsetter cuts the propagation off eventually, but you can 
-guarantee that specific tables will always have children by naming those tables
-with ``require-children=<tablename>``.
-
 Rows are selected randomly, but for tables with a single primary key column, you
 can force rdbms-subsetter to include specific rows (and their dependencies) with
-``force=<tablename>:<primary key value>``.
+``force=<tablename>:<primary key value>``.  The immediate children of these rows
+are also exempted from the ``--children`` limit.
 
 rdbms-subsetter only performs the INSERTS; it's your responsibility to set
 up the target database first, with its foreign key constraints.  The easiest
@@ -53,9 +46,9 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
 
 ::
 
-    pg_dump --schema-only -f schemadump.sql source_database
-    createdb partial_database
-    psql -f schemadump.sql partial_database
+    pg_dump --schema-only -f schemadump.sql bigdb
+    createdb littledb
+    psql -f schemadump.sql littledb
 
 Currently rdbms-subsetter takes no account of schema names and simply assumes all
 tables live in the same schema.  This will probably cause horrible errors if used
@@ -78,7 +71,7 @@ def _find_n_rows(self, estimate=False):
     if estimate:
         try:
             if self.db.engine.driver in ('psycopg2', 'pg8000',):
-                qry = """SELECT reltuples FROM pg_class 
+                qry = """SELECT reltuples FROM pg_class
 	                 WHERE oid = '%s'::regclass""" % self.name
             elif 'oracle' in self.db.engine.driver:
                 qry = """SELECT num_rows FROM all_tables
@@ -104,8 +97,8 @@ def _random_row_gen_fn(self):
                 fraction = n / float(self.n_rows)
                 qry = sa.sql.select([self,]).where(sa.sql.functions.random() < fraction)
                 results = self.db.conn.execute(qry).fetchall()
-                # we may stop wanting rows at any point, so shuffle them so as not to 
-                # skew the sample toward those near the beginning 
+                # we may stop wanting rows at any point, so shuffle them so as not to
+                # skew the sample toward those near the beginning
                 random.shuffle(results)
                 for row in results:
                     yield row
@@ -143,10 +136,10 @@ def _exists(self, **kw):
     return bool(self.db.conn.execute(self.filtered_by(**kw)).first())
 
 def _completeness_score(self):
-    result = ( (self.n_rows / (self.n_rows_desired or 1))**0.33 - 
+    result = ( (self.n_rows / (self.n_rows_desired or 1))**0.33 -
               (len(self.requested) / float(self.n_rows or 1 )) )
     return result
-                  
+
 class Db(object):
 
     def __init__(self, sqla_conn, args):
@@ -197,7 +190,7 @@ class Db(object):
             tbl.target = target
             target.completeness_score = types.MethodType(_completeness_score, target)
             logging.debug("assigned methods to %s" % target.name)
-              
+
     def confirm(self):
         for tbl_name in sorted(self.tables):
             tbl = self.tables[tbl_name]
@@ -206,10 +199,10 @@ class Db(object):
             return True
         response = input("Proceed? (Y/n) ").strip().lower()
         return (not response) or (response[0] == 'y')
-        
+
 
     def create_row_in(self, source_row, target_db, target, limit_children=True):
-        logging.debug('create_row_in %s:%s ' % 
+        logging.debug('create_row_in %s:%s ' %
                       (target.name, target.pk_val(source_row)))
 
         if target.exists(**(dict(source_row))):
@@ -217,13 +210,13 @@ class Db(object):
             return
 
             # make sure that all required rows1kkk are in parent table(s)
-        for fk in target.fks: 
+        for fk in target.fks:
             target_parent = target_db.tables[fk['referred_table']]
             slct = sa.sql.select([target_parent,])
             any_non_null_key_columns = False
-            for (parent_col, child_col) in zip(fk['referred_columns'], 
+            for (parent_col, child_col) in zip(fk['referred_columns'],
                                                fk['constrained_columns']):
-                slct = slct.where(target_parent.c[parent_col] == 
+                slct = slct.where(target_parent.c[parent_col] ==
                                   source_row[child_col])
                 if source_row[child_col] is not None:
                     any_non_null_key_columns = True
@@ -239,31 +232,31 @@ class Db(object):
         for child_fk in target.child_fks:
             child = self.tables[child_fk['constrained_table']]
             slct = sa.sql.select([child,])
-            for (child_col, this_col) in zip(child_fk['constrained_columns'], 
+            for (child_col, this_col) in zip(child_fk['constrained_columns'],
                                              child_fk['referred_columns']):
                 slct = slct.where(child.c[child_col] == source_row[this_col])
             if limit_children:
                 slct = slct.limit(self.args.children)
             for (n, desired_row )in enumerate(self.conn.execute(slct)):
                 if n == 0:
-                    child.target.requested.appendleft(desired_row) 
+                    child.target.requested.appendleft(desired_row)
                 else:
-                    child.target.requested.append(desired_row) 
+                    child.target.requested.append(desired_row)
 
     def create_subset_in(self, target_db):
-       
+
         for (tbl_name, pks) in self.args.force_rows.items():
             source = self.tables[tbl_name]
             for pk in pks:
-                source_row = source.by_pk(pk)  
+                source_row = source.by_pk(pk)
                 if source_row:
                     self.create_row_in(source_row, target_db, source.target, limit_children=False)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
-      
-        while True: 
-            targets = sorted(target_db.tables.values(), 
+
+        while True:
+            targets = sorted(target_db.tables.values(),
                              key=lambda t: t.completeness_score())
             try:
                 target = targets.pop(0)
@@ -271,10 +264,10 @@ class Db(object):
                     target = targets.pop(0)
             except IndexError: # pop failure, no more tables
                 return
-            logging.debug("total n_rows in target: %d" % 
+            logging.debug("total n_rows in target: %d" %
                           sum((t.n_rows for t in target_db.tables.values())))
-            logging.debug("target tables with 0 n_rows: %s" % 
-                          ", ".join(t.name for t in target_db.tables.values() 
+            logging.debug("target tables with 0 n_rows: %s" %
+                          ", ".join(t.name for t in target_db.tables.values()
                                     if not t.n_rows))
             logging.info("lowest completeness score (in %s) at %f" %
                          (target.name, target.completeness_score()))
@@ -282,10 +275,10 @@ class Db(object):
                 return
             source_row = target.source.next_row()
             self.create_row_in(source_row, target_db, target)
-        
+
 
 def fraction(n):
-    n = float(n)        
+    n = float(n)
     if 0 < n <= 1:
         return n
     raise argparse.ArgumentError('Fraction must be greater than 0 and no greater than 1')
@@ -307,13 +300,13 @@ argparser.add_argument('dest', help='SQLAlchemy connection string for data desti
                        type=str)
 argparser.add_argument('fraction', help='Proportion of rows to create in dest (0.0 to 1.0)',
                        type=fraction)
-argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; use 0.5 for fraction', 
+argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; use 0.5 for fraction',
                        action='store_true')
 argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_loglevels,
                        default='INFO')
 argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to force into dest',
                        type=str.lower, action='append')
-argparser.add_argument('-c', '--children', 
+argparser.add_argument('-c', '--children',
                        help='Max number of child rows to attempt to pull for each parent row',
                        type=int, default=3)
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
