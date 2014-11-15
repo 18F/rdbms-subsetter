@@ -19,10 +19,10 @@ Example::
 
     rdbms-subsetter postgresql://:@/bigdb postgresql://:@/littledb 0.05
 
-Valid SQLAlchemy connection strings are described 
+Valid SQLAlchemy connection strings are described
 `here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls#database-urls>`_.
 
-``rdbms-subsetter`` promises that each child row will have whatever parent rows are 
+``rdbms-subsetter`` promises that each child row will have whatever parent rows are
 required by its foreign keys.  It will also *try* to include most child rows belonging
 to each parent row (up to the supplied ``--children`` parameter, default 3 each), but it
 can't make any promises.  (Demanding all children can lead to infinite propagation in
@@ -39,19 +39,14 @@ then each new table's row target will be::
 A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
 1,000,000 to 1,000,000, and 1,000,000,000 to 31,622.
 
-rdbms-subsetter guarantees that your child rows have the necessary parent rows
-to satisfy the foreign keys.  Sometimes it's also important to ensure that
-parent records have child records, when a parent record without children would
-be nonsensical or useless for testing.  For those parent tables, you can demand
-child records for each parent record by specifying::
-
-    --require-children=<tablename>
-
-You can require children for multiple tables with multiple uses of
-``--require-children``.  However, requiring children for too many parent
-tables, when you have a complex web of foreign key relationships, could
-lead to your entire source database being drawn into the destination, as
-parent rows require child rows require parent rows require child rows...
+rdbms-subsetter guarantees that your child rows have the necessary parent rows to
+satisfy the foreign keys.  It also *tries* to ensure that your parent rows have
+child keys, but that becomes tricky when you have a complex web of foreign keys.
+Creating children for a parent may require creating more parent rows in multiple
+tables, each of which may call for their own children... that process can propagate
+endlessly.  rdbms-subsetter cuts the propagation off eventually, but you can
+guarantee that specific tables will always have children by naming those tables
+with ``require-children=<tablename>``.
 
 Rows are selected randomly, but for tables with a single primary key column, you
 can force rdbms-subsetter to include specific rows (and their dependencies) with
@@ -87,7 +82,7 @@ Then the DB-API2 module for your RDBMS; for example, for PostgreSQL,
 Memory
 ------
 
-Will consume memory roughly equal to the size of the *extracted* database.  
+Will consume memory roughly equal to the size of the *extracted* database.
 (Not the size of the *source* database!)
 
 Development
