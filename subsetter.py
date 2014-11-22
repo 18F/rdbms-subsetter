@@ -112,7 +112,7 @@ def _next_row(self):
         return self.target.requested.popleft()
     except IndexError:
         try:
-            return next(self.random_rows)
+            return (next(self.random_rows), True)
         except StopIteration:
             return None
 
@@ -238,10 +238,10 @@ class Db(object):
             if limit_children:
                 slct = slct.limit(self.args.children)
             for (n, desired_row )in enumerate(self.conn.execute(slct)):
-                if n == 0:
-                    child.target.requested.appendleft(desired_row)
+                if (n == 0) or (not limit_children):
+                    child.target.requested.appendleft((desired_row, limit_children))
                 else:
-                    child.target.requested.append(desired_row)
+                    child.target.requested.append((desired_row, limit_children))
 
     def create_subset_in(self, target_db):
 
@@ -273,8 +273,8 @@ class Db(object):
                          (target.name, target.completeness_score()))
             if target.completeness_score() > 0.97:
                 return
-            source_row = target.source.next_row()
-            self.create_row_in(source_row, target_db, target)
+            (source_row, limited_children) = target.source.next_row()
+            self.create_row_in(source_row, target_db, target, limited_children)
 
 
 def fraction(n):
