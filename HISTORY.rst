@@ -7,3 +7,9 @@
 ++++++++++++++++++
 
 * Fixing ``pip`` installation problem
+
+0.2.0 (2014-12-05)
+++++++++++++++++++
+
+* Force loading of all descendents of forced rows
+
