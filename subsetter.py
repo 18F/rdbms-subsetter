@@ -108,11 +108,13 @@ def _random_row_gen_fn(self):
                     yield row
 
 def _next_row(self):
-    try:
+    if self.target.required:
+        return self.target.required.popleft()
+    elif self.target.requested:
         return self.target.requested.popleft()
-    except IndexError:
+    else:
         try:
-            return (next(self.random_rows), True)
+            return (next(self.random_rows), False) # not prioritized
         except StopIteration:
             return None
 
@@ -136,8 +138,12 @@ def _exists(self, **kw):
     return bool(self.db.conn.execute(self.filtered_by(**kw)).first())
 
 def _completeness_score(self):
-    result = ( (self.n_rows / (self.n_rows_desired or 1))**0.33 -
-              (len(self.requested) / float(self.n_rows or 1 )) )
+    """Scores how close a target table is to being filled enough to quit"""
+    result = ( 0
+              - (len(self.requested) / float(self.n_rows or 1 )) 
+              - len(self.required)) 
+    if not self.required:  # anything in `required` queue disqualifies
+        result += (self.n_rows / (self.n_rows_desired or 1))**0.33
     return result
 
 class Db(object):
@@ -178,6 +184,7 @@ class Db(object):
             tbl.next_row = types.MethodType(_next_row, tbl)
             target = target_db.tables[tbl_name]
             target.requested = deque()
+            target.required = deque()
             if tbl.n_rows:
                 if self.args.logarithmic:
                     target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
@@ -201,7 +208,7 @@ class Db(object):
         return (not response) or (response[0] == 'y')
 
 
-    def create_row_in(self, source_row, target_db, target, limit_children=True):
+    def create_row_in(self, source_row, target_db, target, prioritized=False):
         logging.debug('create_row_in %s:%s ' %
                       (target.name, target.pk_val(source_row)))
 
@@ -209,7 +216,7 @@ class Db(object):
             logging.debug("Row already exists; not creating")
             return
 
-            # make sure that all required rows1kkk are in parent table(s)
+            # make sure that all required rows are in parent table(s)
         for fk in target.fks:
             target_parent = target_db.tables[fk['referred_table']]
             slct = sa.sql.select([target_parent,])
@@ -235,13 +242,15 @@ class Db(object):
             for (child_col, this_col) in zip(child_fk['constrained_columns'],
                                              child_fk['referred_columns']):
                 slct = slct.where(child.c[child_col] == source_row[this_col])
-            if limit_children:
+            if not prioritized:
                 slct = slct.limit(self.args.children)
             for (n, desired_row )in enumerate(self.conn.execute(slct)):
-                if (n == 0) or (not limit_children):
-                    child.target.requested.appendleft((desired_row, limit_children))
+                if prioritized:
+                    child.target.required.append((desired_row, prioritized))
+                elif (n == 0):
+                    child.target.requested.appendleft((desired_row, prioritized))
                 else:
-                    child.target.requested.append((desired_row, limit_children))
+                    child.target.requested.append((desired_row, prioritized))
 
     def create_subset_in(self, target_db):
 
@@ -250,11 +259,13 @@ class Db(object):
             for pk in pks:
                 source_row = source.by_pk(pk)
                 if source_row:
-                    self.create_row_in(source_row, target_db, source.target, limit_children=False)
+                    self.create_row_in(source_row, target_db, 
+                                       source.target, prioritized=True)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
 
+                    
         while True:
             targets = sorted(target_db.tables.values(),
                              key=lambda t: t.completeness_score())
@@ -273,8 +284,9 @@ class Db(object):
                          (target.name, target.completeness_score()))
             if target.completeness_score() > 0.97:
                 return
-            (source_row, limited_children) = target.source.next_row()
-            self.create_row_in(source_row, target_db, target, limited_children)
+            (source_row, prioritized) = target.source.next_row()
+            self.create_row_in(source_row, target_db, target, 
+                               prioritized=prioritized)
 
 
 def fraction(n):
