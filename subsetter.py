@@ -338,7 +338,6 @@ def generate():
     logging.getLogger().setLevel(args.loglevel)
     source = Db(args.source, args, schema=args.source_schema)
     target = Db(args.dest, args, schema=args.source_schema)
-    import ipdb; ipdb.set_trace()
     source.assign_target(target)
     if source.confirm():
         source.create_subset_in(target)
