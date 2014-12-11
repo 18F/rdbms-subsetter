@@ -31,7 +31,7 @@ the fraction specified, and ``-l`` is set, and the original table has ``n`` rows
 then each new table's row target will be::
 
     math.pow(10, math.log10(n)*f)
-
+name
 A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
 1,000,000 to 1,000,000, and 1,000,000,000 to 31,622.
 
@@ -50,9 +50,10 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
     createdb littledb
     psql -f schemadump.sql littledb
 
-Currently rdbms-subsetter takes no account of schema names and simply assumes all
-tables live in the same schema.  This will probably cause horrible errors if used
-against databases where foreign keys span schemas.
+You can pull rows from a non-default schema by passing ``--source-schema=<name>``.
+Currently the target database must contain the corresponding tables in its own
+schema of the same name (moving between schemas of different names is not yet
+supported).
 
 """
 import argparse
@@ -140,28 +141,29 @@ def _exists(self, **kw):
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
     result = ( 0
-              - (len(self.requested) / float(self.n_rows or 1 )) 
-              - len(self.required)) 
+              - (len(self.requested) / float(self.n_rows or 1 ))
+              - len(self.required))
     if not self.required:  # anything in `required` queue disqualifies
         result += (self.n_rows / (self.n_rows_desired or 1))**0.33
     return result
 
 class Db(object):
 
-    def __init__(self, sqla_conn, args):
+    def __init__(self, sqla_conn, args, schema=None):
         self.args = args
         self.sqla_conn = sqla_conn
+        self.schema = schema
         self.engine = sa.create_engine(sqla_conn)
         self.meta = sa.MetaData(bind=self.engine)
-        self.meta.reflect()
+        self.meta.reflect(schema=self.schema)
         self.inspector = Inspector(bind=self.engine)
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
             tbl.db = self
             tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
-            tbl.fks = self.inspector.get_foreign_keys(tbl.name)
-            tbl.pk = self.inspector.get_primary_keys(tbl.name)
+            tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=self.schema)
+            tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=self.schema)
             tbl.filtered_by = types.MethodType(_filtered_by, tbl)
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
@@ -259,13 +261,13 @@ class Db(object):
             for pk in pks:
                 source_row = source.by_pk(pk)
                 if source_row:
-                    self.create_row_in(source_row, target_db, 
+                    self.create_row_in(source_row, target_db,
                                        source.target, prioritized=True)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
 
-                    
+
         while True:
             targets = sorted(target_db.tables.values(),
                              key=lambda t: t.completeness_score())
@@ -285,7 +287,7 @@ class Db(object):
             if target.completeness_score() > 0.97:
                 return
             (source_row, prioritized) = target.source.next_row()
-            self.create_row_in(source_row, target_db, target, 
+            self.create_row_in(source_row, target_db, target,
                                prioritized=prioritized)
 
 
@@ -321,6 +323,8 @@ argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to 
 argparser.add_argument('-c', '--children',
                        help='Max number of child rows to attempt to pull for each parent row',
                        type=int, default=3)
+argparser.add_argument('--source-schema', help='Use this schema (in both source and dest',
+                       type=str)
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
@@ -332,8 +336,9 @@ def generate():
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
-    source = Db(args.source, args)
-    target = Db(args.dest, args)
+    source = Db(args.source, args, schema=args.source_schema)
+    target = Db(args.dest, args, schema=args.source_schema)
+    import ipdb; ipdb.set_trace()
     source.assign_target(target)
     if source.confirm():
         source.create_subset_in(target)

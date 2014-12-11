@@ -55,9 +55,10 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
     createdb littledb
     psql -f schemadump.sql littledb
 
-Currently rdbms-subsetter takes no account of schema names and simply assumes all
-tables live in the same schema.  This will probably cause horrible errors if used
-against databases where foreign keys span schemas.
+You can pull rows from a non-default schema by passing ``--source-schema=<name>``.
+Currently the target database must contain the corresponding tables in its own
+schema of the same name (moving between schemas of different names is not yet
+supported).
 
 Installing
 ----------
