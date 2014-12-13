@@ -87,6 +87,15 @@ def _find_n_rows(self, estimate=False):
     if not self.n_rows:
         self.n_rows = self.db.conn.execute(self.count()).fetchone()[0]
 
+def _random_row_func(self):
+    dialect = self.bind.engine.dialect.name
+    if 'mysql' in dialect:
+        return sa.sql.func.rand()
+    elif 'oracle' in dialect:
+        return sa.sql.func.dbms_random.value()
+    else:
+        return sa.sql.func.random()
+
 def _random_row_gen_fn(self):
     """
     Random sample of *approximate* size n
@@ -96,7 +105,7 @@ def _random_row_gen_fn(self):
             n = self.target.n_rows_desired
             if self.n_rows > 1000:
                 fraction = n / float(self.n_rows)
-                qry = sa.sql.select([self,]).where(sa.sql.functions.random() < fraction)
+                qry = sa.sql.select([self,]).where(self.random_row_func() < fraction)
                 results = self.db.conn.execute(qry).fetchall()
                 # we may stop wanting rows at any point, so shuffle them so as not to
                 # skew the sample toward those near the beginning
@@ -104,7 +113,7 @@ def _random_row_gen_fn(self):
                 for row in results:
                     yield row
             else:
-                qry = sa.sql.select([self,]).order_by(sa.sql.functions.random()).limit(n)
+                qry = sa.sql.select([self,]).order_by(self.random_row_func()).limit(n)
                 for row in self.db.conn.execute(qry):
                     yield row
 
@@ -131,7 +140,8 @@ def _pk_val(self, row):
         return None
 
 def _by_pk(self, pk):
-    pk_name = self.db.inspector.get_primary_keys(self.name)[0]
+    pk_name = self.db.inspector.get_primary_keys(self.name,
+                                                 self.schema)[0]
     slct = self.filtered_by(**({pk_name:pk}))
     return self.db.conn.execute(slct).fetchone()
 
@@ -161,7 +171,9 @@ class Db(object):
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
             tbl.db = self
+            # TODO: Replace all these monkeypatches with an instance assigment
             tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
+            tbl.random_row_func = types.MethodType(_random_row_func, tbl)
             tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=self.schema)
             tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=self.schema)
             tbl.filtered_by = types.MethodType(_filtered_by, tbl)
