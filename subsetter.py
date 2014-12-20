@@ -55,6 +55,8 @@ Currently the target database must contain the corresponding tables in its own
 schema of the same name (moving between schemas of different names is not yet
 supported).
 
+Case-specific table names will probably cause bugs in rdbms-subsetter,
+and in the rest of your life, for that matter.  Don't do it.
 """
 import argparse
 import logging
@@ -73,10 +75,10 @@ def _find_n_rows(self, estimate=False):
         try:
             if self.db.engine.driver in ('psycopg2', 'pg8000',):
                 qry = """SELECT reltuples FROM pg_class
-	                 WHERE oid = '%s'::regclass""" % self.name
+	                 WHERE lower(oid) = '%s'::regclass""" % self.name.lower()
             elif 'oracle' in self.db.engine.driver:
                 qry = """SELECT num_rows FROM all_tables
-	                 WHERE table_name='%s'""" % self.name
+	                 WHERE LOWER(table_name)='%s'""" % self.name.lower()
             else:
                 raise NotImplementedError("No approximation known for driver %s"
                                           % self.db.engine.driver)
