@@ -173,18 +173,11 @@ class Db(object):
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
-            if tbl.schema != self.schema:
-                pass
-                # import ipdb; ipdb.set_trace()
-                # continue  # TODO: but maybe it would be better to get these rows after all
             tbl.db = self
             # TODO: Replace all these monkeypatches with an instance assigment
             tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
             tbl.random_row_func = types.MethodType(_random_row_func, tbl)
             tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
-
-            if tbl.fks:
-                import ipdb; ipdb.set_trace()
             tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
             tbl.filtered_by = types.MethodType(_filtered_by, tbl)
             tbl.by_pk = types.MethodType(_by_pk, tbl)
@@ -192,21 +185,22 @@ class Db(object):
             tbl.exists = types.MethodType(_exists, tbl)
             tbl.child_fks = []
             tbl.find_n_rows(estimate=True)
-            self.tables[tbl.name] = tbl
-        for (tbl_name, tbl) in self.tables.items():
+            self.tables[(tbl.schema, tbl.name)] = tbl
+        for ((tbl_schema, tbl_name), tbl) in self.tables.items():
             for fk in tbl.fks:
-                fk['constrained_table'] = tbl_name
-                self.tables[fk['referred_table']].child_fks.append(fk)
+                fk['constrained_schema'] = tbl_schema
+                fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
+                self.tables[(fk['referred_schema'], fk['referred_table'])].child_fks.append(fk)
 
     def __repr__(self):
         return "Db('%s')" % self.sqla_conn
 
     def assign_target(self, target_db):
-        for (tbl_name, tbl) in self.tables.items():
+        for ((tbl_schema, tbl_name), tbl) in self.tables.items():
             tbl._random_row_gen_fn = types.MethodType(_random_row_gen_fn, tbl)
             tbl.random_rows = tbl._random_row_gen_fn()
             tbl.next_row = types.MethodType(_next_row, tbl)
-            target = target_db.tables[tbl_name]
+            target = target_db.tables[(tbl_schema, tbl_name)]
             target.requested = deque()
             target.required = deque()
             if tbl.n_rows:
@@ -223,9 +217,11 @@ class Db(object):
             logging.debug("assigned methods to %s" % target.name)
 
     def confirm(self):
-        for tbl_name in sorted(self.tables):
-            tbl = self.tables[tbl_name]
-            print("Create %d rows from %d in %s" % (tbl.target.n_rows_desired, tbl.n_rows, tbl_name))
+        message = []
+        for (tbl_schema, tbl_name) in sorted(self.tables, key=lambda t: t[1]):
+            tbl = self.tables[(tbl_schema, tbl_name)]
+            message.append("Create %d rows from %d in %s" % (tbl.target.n_rows_desired, tbl.n_rows, tbl_name))
+        print("\n".join(sorted(message)))
         if self.args.yes:
             return True
         response = input("Proceed? (Y/n) ").strip().lower()
@@ -242,7 +238,7 @@ class Db(object):
 
             # make sure that all required rows are in parent table(s)
         for fk in target.fks:
-            target_parent = target_db.tables[fk['referred_table']]
+            target_parent = target_db.tables[(fk['referred_schema'], fk['referred_table'])]
             slct = sa.sql.select([target_parent,])
             any_non_null_key_columns = False
             for (parent_col, child_col) in zip(fk['referred_columns'],
@@ -261,7 +257,7 @@ class Db(object):
         target.n_rows += 1
 
         for child_fk in target.child_fks:
-            child = self.tables[child_fk['constrained_table']]
+            child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]
             slct = sa.sql.select([child,])
             for (child_col, this_col) in zip(child_fk['constrained_columns'],
                                              child_fk['referred_columns']):
@@ -279,7 +275,11 @@ class Db(object):
     def create_subset_in(self, target_db):
 
         for (tbl_name, pks) in self.args.force_rows.items():
-            source = self.tables[tbl_name]
+            if '.' in tbl_name:
+                (tbl_schema, tbl_name) = tbl_name.split('.', 1)
+            else:
+                tbl_schema = None
+            source = self.tables[(tbl_schema, tbl_name)]
             for pk in pks:
                 source_row = source.by_pk(pk)
                 if source_row:
@@ -358,7 +358,6 @@ def generate():
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
-    import ipdb; ipdb.set_trace()
     source = Db(args.source, args, schema=args.source_schema)
     target = Db(args.dest, args, schema=args.source_schema)
     source.assign_target(target)

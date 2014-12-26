@@ -13,3 +13,9 @@
 
 * Force loading of all descendents of forced rows
 
+0.2.1 (2014-12-28)
+++++++++++++++++++
+
+* Accept ``source-schema`` argument
+* Handle foreign keys that cross schema boundaries
+
