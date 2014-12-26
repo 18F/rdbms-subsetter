@@ -74,8 +74,9 @@ def _find_n_rows(self, estimate=False):
     if estimate:
         try:
             if self.db.engine.driver in ('psycopg2', 'pg8000',):
+                schema = (self.schema + '.') if self.schema else ''
                 qry = """SELECT reltuples FROM pg_class
-	                 WHERE oid = lower('%s')::regclass""" % self.name.lower()
+	                 WHERE oid = lower('%s%s')::regclass""" % (schema, self.name.lower())
             elif 'oracle' in self.db.engine.driver:
                 qry = """SELECT num_rows FROM all_tables
 	                 WHERE LOWER(table_name)='%s'""" % self.name.lower()
@@ -166,18 +167,25 @@ class Db(object):
         self.sqla_conn = sqla_conn
         self.schema = schema
         self.engine = sa.create_engine(sqla_conn)
-        self.meta = sa.MetaData(bind=self.engine)
+        self.meta = sa.MetaData(bind=self.engine) # excised schema=schema to prevent errors
         self.meta.reflect(schema=self.schema)
         self.inspector = Inspector(bind=self.engine)
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
+            if tbl.schema != self.schema:
+                pass
+                # import ipdb; ipdb.set_trace()
+                # continue  # TODO: but maybe it would be better to get these rows after all
             tbl.db = self
             # TODO: Replace all these monkeypatches with an instance assigment
             tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
             tbl.random_row_func = types.MethodType(_random_row_func, tbl)
-            tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=self.schema)
-            tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=self.schema)
+            tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
+
+            if tbl.fks:
+                import ipdb; ipdb.set_trace()
+            tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
             tbl.filtered_by = types.MethodType(_filtered_by, tbl)
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
@@ -350,6 +358,7 @@ def generate():
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
+    import ipdb; ipdb.set_trace()
     source = Db(args.source, args, schema=args.source_schema)
     target = Db(args.dest, args, schema=args.source_schema)
     source.assign_target(target)
