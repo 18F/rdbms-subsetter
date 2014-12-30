@@ -220,7 +220,9 @@ class Db(object):
         message = []
         for (tbl_schema, tbl_name) in sorted(self.tables, key=lambda t: t[1]):
             tbl = self.tables[(tbl_schema, tbl_name)]
-            message.append("Create %d rows from %d in %s" % (tbl.target.n_rows_desired, tbl.n_rows, tbl_name))
+            message.append("Create %d rows from %d in %s.%s" %
+                           (tbl.target.n_rows_desired, tbl.n_rows,
+                            tbl_schema or '', tbl_name))
         print("\n".join(sorted(message)))
         if self.args.yes:
             return True
@@ -232,29 +234,32 @@ class Db(object):
         logging.debug('create_row_in %s:%s ' %
                       (target.name, target.pk_val(source_row)))
 
-        if target.exists(**(dict(source_row))):
-            logging.debug("Row already exists; not creating")
+        row_exists = target.exists(**(dict(source_row)))
+        logging.debug("Row exists? %s" % str(row_exists))
+        if row_exists and not prioritized:
             return
 
+        if not row_exists:
             # make sure that all required rows are in parent table(s)
-        for fk in target.fks:
-            target_parent = target_db.tables[(fk['referred_schema'], fk['referred_table'])]
-            slct = sa.sql.select([target_parent,])
-            any_non_null_key_columns = False
-            for (parent_col, child_col) in zip(fk['referred_columns'],
-                                               fk['constrained_columns']):
-                slct = slct.where(target_parent.c[parent_col] ==
-                                  source_row[child_col])
-                if source_row[child_col] is not None:
-                    any_non_null_key_columns = True
-            if any_non_null_key_columns:
-                target_parent_row = target_db.conn.execute(slct).first()
-                if not target_parent_row:
-                    source_parent_row = self.conn.execute(slct).first()
-                    self.create_row_in(source_parent_row, target_db, target_parent)
-        ins = target.insert().values(**source_row)
-        target_db.conn.execute(ins)
-        target.n_rows += 1
+            for fk in target.fks:
+                target_parent = target_db.tables[(fk['referred_schema'], fk['referred_table'])]
+                slct = sa.sql.select([target_parent,])
+                any_non_null_key_columns = False
+                for (parent_col, child_col) in zip(fk['referred_columns'],
+                                                   fk['constrained_columns']):
+                    slct = slct.where(target_parent.c[parent_col] ==
+                                      source_row[child_col])
+                    if source_row[child_col] is not None:
+                        any_non_null_key_columns = True
+                if any_non_null_key_columns:
+                    target_parent_row = target_db.conn.execute(slct).first()
+                    if not target_parent_row:
+                        source_parent_row = self.conn.execute(slct).first()
+                        self.create_row_in(source_parent_row, target_db, target_parent)
+
+            ins = target.insert().values(**source_row)
+            target_db.conn.execute(ins)
+            target.n_rows += 1
 
         for child_fk in target.child_fks:
             child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]
@@ -315,7 +320,7 @@ class Db(object):
 
 def fraction(n):
     n = float(n)
-    if 0 < n <= 1:
+    if 0 <= n <= 1:
         return n
     raise argparse.ArgumentError('Fraction must be greater than 0 and no greater than 1')
 
@@ -345,8 +350,8 @@ argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to 
 argparser.add_argument('-c', '--children',
                        help='Max number of child rows to attempt to pull for each parent row',
                        type=int, default=3)
-argparser.add_argument('--source-schema', help='Use this schema (in both source and dest',
-                       type=str)
+argparser.add_argument('--schema', help='Non-default schema to include',
+                       type=str, action='append')
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
@@ -358,8 +363,10 @@ def generate():
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
-    source = Db(args.source, args, schema=args.source_schema)
-    target = Db(args.dest, args, schema=args.source_schema)
-    source.assign_target(target)
-    if source.confirm():
-        source.create_subset_in(target)
+    schemas = args.schema + [None,]
+    for schema in schemas:
+        source = Db(args.source, args, schema=schema)
+        target = Db(args.dest, args, schema=schema)
+        source.assign_target(target)
+        if source.confirm():
+            source.create_subset_in(target)
