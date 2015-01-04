@@ -31,7 +31,7 @@ the fraction specified, and ``-l`` is set, and the original table has ``n`` rows
 then each new table's row target will be::
 
     math.pow(10, math.log10(n)*f)
-name
+
 A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
 1,000,000 to 1,000,000, and 1,000,000,000 to 31,622.
 
@@ -50,12 +50,12 @@ way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
     createdb littledb
     psql -f schemadump.sql littledb
 
-You can pull rows from a non-default schema by passing ``--source-schema=<name>``.
+You can pull rows from a non-default schema by passing ``--schema=<name>``.
 Currently the target database must contain the corresponding tables in its own
 schema of the same name (moving between schemas of different names is not yet
 supported).
 
-Case-specific table names will probably cause bugs in rdbms-subsetter,
+Case-specific table names will probably create bad results in rdbms-subsetter,
 and in the rest of your life, for that matter.  Don't do it.
 """
 import argparse
@@ -67,7 +67,7 @@ import types
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
@@ -341,7 +341,7 @@ argparser.add_argument('dest', help='SQLAlchemy connection string for data desti
                        type=str)
 argparser.add_argument('fraction', help='Proportion of rows to create in dest (0.0 to 1.0)',
                        type=fraction)
-argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; use 0.5 for fraction',
+argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; try 0.5 for fraction',
                        action='store_true')
 argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_loglevels,
                        default='INFO')

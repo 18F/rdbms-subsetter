@@ -17,9 +17,9 @@ readme = open(os.path.join(curdir, 'README.rst')).read()
 
 setup(
     name='rdbms-subsetter',
-    version='0.2.0',
+    version='0.2.1',
     description='Generate consistent subset of an RDBMS',
-    long_description=readme + '\n\n' + readme,
+    long_description=readme,
     author='Catherine Devlin',
     author_email='catherine.devlin@gsa.gov',
     url='https://github.com/18f/https://github.com/18F/rdbms-subsetter',
