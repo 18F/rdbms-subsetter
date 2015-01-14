@@ -33,7 +33,7 @@ then each new table's row target will be::
     math.pow(10, math.log10(n)*f)
 
 A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
-1,000,000 to 1,000,000, and 1,000,000,000 to 31,622.
+1,000,000 to 1,000, and 1,000,000,000 to 31,622.
 
 Rows are selected randomly, but for tables with a single primary key column, you
 can force rdbms-subsetter to include specific rows (and their dependencies) with
