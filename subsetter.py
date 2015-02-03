@@ -351,7 +351,7 @@ argparser.add_argument('-c', '--children',
                        help='Max number of child rows to attempt to pull for each parent row',
                        type=int, default=3)
 argparser.add_argument('--schema', help='Non-default schema to include',
-                       type=str, action='append')
+                       type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
