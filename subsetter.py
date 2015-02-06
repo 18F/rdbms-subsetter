@@ -318,6 +318,28 @@ class Db(object):
                                prioritized=prioritized)
 
 
+def update_sequences(source, target):
+    """Set database sequence values to match the source db
+
+       Needed to avoid subsequent unique key violations after DB build.
+       Currently only implemented for postgresql -> postgresql."""
+
+    if source.engine.name != 'postgresql' or target.engine.name != 'postgresql':
+        return
+    qry = """SELECT 'SELECT last_value FROM ' || n.nspname ||
+                     '.' || c.relname || ';' AS qry,
+                    n.nspname || '.' || c.relname AS qual_name
+             FROM   pg_namespace n
+             JOIN   pg_class c ON (n.oid = c.relnamespace)
+             WHERE  c.relkind = 'S'"""
+    for (qry, qual_name) in list(source.conn.execute(qry)):
+        (lastval, ) = source.conn.execute(qry).first()
+        nextval = int(lastval) + 1
+        updater = "ALTER SEQUENCE %s RESTART WITH %s;" % (qual_name, nextval)
+        target.conn.execute(updater)
+    target.conn.execute('commit')
+
+
 def fraction(n):
     n = float(n)
     if 0 <= n <= 1:
@@ -372,3 +394,4 @@ def generate():
         source.assign_target(target)
         if source.confirm():
             source.create_subset_in(target)
+    update_sequences(source, target)
