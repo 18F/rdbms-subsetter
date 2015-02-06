@@ -367,6 +367,8 @@ def generate():
     for schema in schemas:
         source = Db(args.source, args, schema=schema)
         target = Db(args.dest, args, schema=schema)
+        if set(source.tables.keys()) != set(target.tables.keys()):
+            raise Exception('Source and target databases have different tables')
         source.assign_target(target)
         if source.confirm():
             source.create_subset_in(target)
