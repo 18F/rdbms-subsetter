@@ -19,3 +19,8 @@
 * Accept ``schema`` argument
 * Handle foreign keys that cross schema boundaries
 
+0.2.2 (2015-02-06)
+++++++++++++++++++
+
+* Set sequence values in test DB to avoid unique constraint violations (PG only)
+
