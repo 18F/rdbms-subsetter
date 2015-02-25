@@ -20,7 +20,7 @@ Example::
     rdbms-subsetter postgresql://:@/bigdb postgresql://:@/littledb 0.05
 
 Valid SQLAlchemy connection strings are described
-`here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls#database-urls>`_.
+`here <docs.sqlalchemy.org/en/latest/core/engines.html#database-urls>`_.
 
 ``rdbms-subsetter`` promises that each child row will have whatever parent rows are
 required by its foreign keys.  It will also *try* to include most child rows belonging
