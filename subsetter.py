@@ -67,6 +67,12 @@ import types
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
+# Python2 has a totally different definition for ``input``; overriding it here
+try:
+    input = raw_input
+except NameError:
+    pass
+
 __version__ = '0.2.2'
 
 def _find_n_rows(self, estimate=False):
