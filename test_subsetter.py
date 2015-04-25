@@ -9,6 +9,7 @@ class DummyArgs(object):
     fraction = 0.25
     force_rows = {}
     children = 25
+    exclude_tables = []
 
 dummy_args = DummyArgs()
 
