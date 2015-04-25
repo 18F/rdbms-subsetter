@@ -59,6 +59,7 @@ Case-specific table names will probably create bad results in rdbms-subsetter,
 and in the rest of your life, for that matter.  Don't do it.
 """
 import argparse
+import functools
 import logging
 from collections import OrderedDict, deque
 import math
@@ -82,10 +83,10 @@ def _find_n_rows(self, estimate=False):
             if self.db.engine.driver in ('psycopg2', 'pg8000',):
                 schema = (self.schema + '.') if self.schema else ''
                 qry = """SELECT reltuples FROM pg_class
-	                 WHERE oid = lower('%s%s')::regclass""" % (schema, self.name.lower())
+                         WHERE oid = lower('%s%s')::regclass""" % (schema, self.name.lower())
             elif 'oracle' in self.db.engine.driver:
                 qry = """SELECT num_rows FROM all_tables
-	                 WHERE LOWER(table_name)='%s'""" % self.name.lower()
+                         WHERE LOWER(table_name)='%s'""" % self.name.lower()
             else:
                 raise NotImplementedError("No approximation known for driver %s"
                                           % self.db.engine.driver)
@@ -151,11 +152,8 @@ def _pk_val(self, row):
 def _by_pk(self, pk):
     pk_name = self.db.inspector.get_primary_keys(self.name,
                                                  self.schema)[0]
-    slct = self.filtered_by(**({pk_name:pk}))
+    slct = self.filtered_by(**{pk_name: pk})
     return self.db.conn.execute(slct).fetchone()
-
-def _exists(self, **kw):
-    return bool(self.db.conn.execute(self.filtered_by(**kw)).first())
 
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
@@ -188,7 +186,6 @@ class Db(object):
             tbl.filtered_by = types.MethodType(_filtered_by, tbl)
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
-            tbl.exists = types.MethodType(_exists, tbl)
             tbl.child_fks = []
             tbl.find_n_rows(estimate=True)
             self.tables[(tbl.schema, tbl.name)] = tbl
@@ -209,6 +206,8 @@ class Db(object):
             target = target_db.tables[(tbl_schema, tbl_name)]
             target.requested = deque()
             target.required = deque()
+            target.pending = dict()
+            target.done = set()
             if tbl.n_rows:
                 if self.args.logarithmic:
                     target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
@@ -235,12 +234,12 @@ class Db(object):
         response = input("Proceed? (Y/n) ").strip().lower()
         return (not response) or (response[0] == 'y')
 
-
     def create_row_in(self, source_row, target_db, target, prioritized=False):
         logging.debug('create_row_in %s:%s ' %
                       (target.name, target.pk_val(source_row)))
 
-        row_exists = target.exists(**(dict(source_row)))
+        pks = tuple((source_row[key] for key in target.pk))
+        row_exists = pks in target.pending or pks in target.done
         logging.debug("Row exists? %s" % str(row_exists))
         if row_exists and not prioritized:
             return
@@ -257,31 +256,48 @@ class Db(object):
                                       source_row[child_col])
                     if source_row[child_col] is not None:
                         any_non_null_key_columns = True
+                        break
                 if any_non_null_key_columns:
                     target_parent_row = target_db.conn.execute(slct).first()
                     if not target_parent_row:
                         source_parent_row = self.conn.execute(slct).first()
                         self.create_row_in(source_parent_row, target_db, target_parent)
 
-            ins = target.insert().values(**source_row)
-            target_db.conn.execute(ins)
+            pks = tuple((source_row[key] for key in target.pk))
+            target.pending[pks] = source_row
             target.n_rows += 1
 
         for child_fk in target.child_fks:
             child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]
-            slct = sa.sql.select([child,])
+            slct = sa.sql.select([child])
             for (child_col, this_col) in zip(child_fk['constrained_columns'],
                                              child_fk['referred_columns']):
                 slct = slct.where(child.c[child_col] == source_row[this_col])
             if not prioritized:
                 slct = slct.limit(self.args.children)
-            for (n, desired_row )in enumerate(self.conn.execute(slct)):
+            for (n, desired_row) in enumerate(self.conn.execute(slct)):
                 if prioritized:
                     child.target.required.append((desired_row, prioritized))
                 elif (n == 0):
                     child.target.requested.appendleft((desired_row, prioritized))
                 else:
                     child.target.requested.append((desired_row, prioritized))
+
+    @property
+    def pending(self):
+        return functools.reduce(
+            lambda count, table: count + len(table.pending),
+            self.tables.values(),
+            0
+        )
+
+    def flush(self):
+        for table in self.tables.values():
+            if not table.pending:
+                continue
+            self.conn.execute(table.insert(), list(table.pending.values()))
+            table.done = table.done.union(table.pending.keys())
+            table.pending = dict()
 
     def create_subset_in(self, target_db):
 
@@ -300,7 +316,6 @@ class Db(object):
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
 
-
         while True:
             targets = sorted(target_db.tables.values(),
                              key=lambda t: t.completeness_score())
@@ -308,8 +323,8 @@ class Db(object):
                 target = targets.pop(0)
                 while not target.source.n_rows:
                     target = targets.pop(0)
-            except IndexError: # pop failure, no more tables
-                return
+            except IndexError:  # pop failure, no more tables
+                break
             logging.debug("total n_rows in target: %d" %
                           sum((t.n_rows for t in target_db.tables.values())))
             logging.debug("target tables with 0 n_rows: %s" %
@@ -318,10 +333,15 @@ class Db(object):
             logging.info("lowest completeness score (in %s) at %f" %
                          (target.name, target.completeness_score()))
             if target.completeness_score() > 0.97:
-                return
+                break
             (source_row, prioritized) = target.source.next_row()
             self.create_row_in(source_row, target_db, target,
                                prioritized=prioritized)
+
+            if target_db.pending > self.args.buffer:
+                target_db.flush()
+
+        target_db.flush()
 
 
 def update_sequences(source, target):
@@ -371,6 +391,8 @@ argparser.add_argument('fraction', help='Proportion of rows to create in dest (0
                        type=fraction)
 argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; try 0.5 for fraction',
                        action='store_true')
+argparser.add_argument('-b', '--buffer', help='Number of records to store in buffer before flush',
+                       type=int, default=1000)
 argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_loglevels,
                        default='INFO')
 argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to force into dest',
