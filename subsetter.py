@@ -401,3 +401,6 @@ def generate():
         if source.confirm():
             source.create_subset_in(target)
     update_sequences(source, target)
+
+if __name__ == '__main__':
+    generate()
