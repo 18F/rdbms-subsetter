@@ -30,3 +30,5 @@
 * Fixed ``input``/``raw_input`` Py2/3 bug (thanks mrchrisadams)
 * Let `python subsetter.py` run directly, without installation (thanks amitsaha)
 * Manually-specified constraints (thanks jmcarp)
+* `--exclude-table` argument (jmcarp)
+

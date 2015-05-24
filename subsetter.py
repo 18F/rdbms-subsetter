@@ -180,6 +180,8 @@ class Db(object):
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
+            if tbl.name in self.args.exclude_tables:
+                continue
             tbl.db = self
             # TODO: Replace all these monkeypatches with an instance assigment
             tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
@@ -384,6 +386,8 @@ argparser.add_argument('--schema', help='Non-default schema to include',
                        type=str, action='append', default=[])
 argparser.add_argument('--config', help='Path to configuration .json file',
                        type=argparse.FileType('r'))
+argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude',
+                       type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
