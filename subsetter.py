@@ -75,7 +75,7 @@ try:
 except NameError:
     pass
 
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
