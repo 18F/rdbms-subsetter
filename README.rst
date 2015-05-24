@@ -32,8 +32,8 @@ so increase ``--children`` with caution.)
 
 When row numbers in your tables vary wildly (tens to billions, for example),
 consider using the ``-l`` flag, which sets row number targets
-by a logarithmic formula.  
-When ``-l`` is set, if ``f`` is the fraction specified, 
+by a logarithmic formula.
+When ``-l`` is set, if ``f`` is the fraction specified,
 and the original table has ``n`` rows,
 then each new table's row target will be::
 
@@ -44,7 +44,7 @@ A fraction of ``0.5`` seems to produce good results, converting 10 rows to 3,
 
 Rows are selected randomly, but for tables with a single primary key column, you
 can force rdbms-subsetter to include specific rows (and their dependencies) with
-``force=<tablename>:<primary key value>``.  The children, grandchildren, etc. of 
+``force=<tablename>:<primary key value>``.  The children, grandchildren, etc. of
 these rows
 are exempted from the ``--children`` limit.
 
@@ -64,6 +64,28 @@ with the ``--schema=<name>`` parameter (which can be used multiple times).
 Currently the target database must contain the corresponding tables in its own
 schema of the same name (moving between schemas of different names is not yet
 supported).
+
+Configuration file
+------------------
+
+If you need to honor relationships that aren't actually defined as foreign-key
+constraints in the database - for example, if you are using MySQL MyISAM
+and can't define constraints - you can specify a
+configuration file with ``--config``.  The config file should specify constraints
+in JSON.  For example,
+
+    {
+      "constraints": {
+        "(child_table_name)": [
+          {
+            "referred_schema": null,
+            "referred_table": "(name of parent table)",
+            "referred_columns": ["(constraint col 1 in parent)", "(constraint col 2 in parent)",],
+            "constrained_columns": ["(constrained col 1 in child)", "(constrained col 2 in child)",],
+          }
+        ],
+      }
+    }
 
 Installing
 ----------

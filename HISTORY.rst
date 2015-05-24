@@ -24,8 +24,9 @@
 
 * Set sequence values in test DB to avoid unique constraint violations (PG only)
 
-0.2.3 (2015-02- 
+0.2.3 (2015-02-
 ++++++++++++++++++
 
 * Fixed ``input``/``raw_input`` Py2/3 bug (thanks mrchrisadams)
 * Let `python subsetter.py` run directly, without installation (thanks amitsaha)
+* Manually-specified constraints (thanks jmcarp)
