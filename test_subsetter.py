@@ -11,6 +11,7 @@ class DummyArgs(object):
     children = 25
     config = {}
     exclude_tables = []
+    buffer = 1000
 
 dummy_args = DummyArgs()
 
@@ -89,5 +90,3 @@ class OverallTest(unittest.TestCase):
         src.create_subset_in(dest)
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 0)
-
-
