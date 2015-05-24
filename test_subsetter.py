@@ -9,8 +9,12 @@ class DummyArgs(object):
     fraction = 0.25
     force_rows = {}
     children = 25
+<<<<<<< HEAD
     config = {}
     exclude_tables = []
+=======
+    buffer = 1000
+>>>>>>> bf9c1866e2e25a111169886b8fb7e4e5de09aa04
 
 dummy_args = DummyArgs()
 
@@ -89,5 +93,3 @@ class OverallTest(unittest.TestCase):
         src.create_subset_in(dest)
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 0)
-
-
