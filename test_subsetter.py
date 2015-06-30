@@ -19,6 +19,7 @@ class OverallTest(unittest.TestCase):
 
     def setUp(self):
         schema = ["CREATE TABLE state (abbrev, name)",
+                  "CREATE TABLE zeppos (name, home_city)",
                   """CREATE TABLE city (name, state_abbrev,
                                         FOREIGN KEY (state_abbrev)
                                         REFERENCES state(abbrev))""",
@@ -51,6 +52,8 @@ class OverallTest(unittest.TestCase):
         for params in (('Graf Zeppelin', None), ('USS Los Angeles', None),
                        ('Nordstern', None), ('Bodensee', None)):
             self.source_db.execute("INSERT INTO zeppelins VALUES (?, ?)", params)
+        for params in (('Zeppo Marx', 'New York City'), ):
+            self.source_db.execute("INSERT INTO zeppos VALUES (?, ?)", params)
         self.source_db.commit()
         self.dest_db.commit()
 
@@ -90,3 +93,15 @@ class OverallTest(unittest.TestCase):
         src.create_subset_in(dest)
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 0)
+
+    def test_exclude_tables_wildcard(self):
+        args_with_exclude = DummyArgs()
+        args_with_exclude.exclude_tables = ['zep*',]
+        src = Db(self.source_sqla, args_with_exclude)
+        dest = Db(self.dest_sqla, args_with_exclude)
+        src.assign_target(dest)
+        src.create_subset_in(dest)
+        zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
+        self.assertEqual(len(zeppelins), 0)
+        zeppos = self.dest_db.execute("SELECT * FROM zeppos").fetchall()
+        self.assertEqual(len(zeppos), 0)

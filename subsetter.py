@@ -59,6 +59,7 @@ Case-specific table names will probably create bad results in rdbms-subsetter,
 and in the rest of your life, for that matter.  Don't do it.
 """
 import json
+import fnmatch
 import argparse
 import functools
 import logging
@@ -178,7 +179,7 @@ class Db(object):
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
-            if tbl.name in self.args.exclude_tables:
+            if any(fnmatch.fnmatch(tbl.name, each) for each in args.exclude_tables):
                 continue
             tbl.db = self
             # TODO: Replace all these monkeypatches with an instance assigment
