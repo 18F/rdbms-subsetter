@@ -193,7 +193,9 @@ class Db(object):
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
             tbl.child_fks = []
-            tbl.find_n_rows(estimate=(tbl.name not in self.args.full_tables))
+            estimate_rows = not(any(fnmatch.fnmatch(tbl.name, each) 
+                                    for each in self.args.full_tables))
+            tbl.find_n_rows(estimate=estimate_rows)
             self.tables[(tbl.schema, tbl.name)] = tbl
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
             constraints = args.config.get('constraints', {}).get(tbl_name, [])
@@ -215,7 +217,8 @@ class Db(object):
             target.required = deque()
             target.pending = dict()
             target.done = set()
-            if tbl.name in self.args.full_tables:
+            if any(fnmatch.fnmatch(tbl.name, each) 
+                   for each in self.args.full_tables):
                 target.n_rows_desired = tbl.n_rows
             else:
                 if tbl.n_rows:
