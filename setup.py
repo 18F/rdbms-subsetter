@@ -17,7 +17,7 @@ readme = open(os.path.join(curdir, 'README.rst')).read()
 
 setup(
     name='rdbms-subsetter',
-    version='0.2.3',
+    version='0.2.4',
     description='Generate consistent subset of an RDBMS',
     long_description=readme,
     author='Catherine Devlin',

@@ -32,3 +32,11 @@
 * Manually-specified constraints (thanks jmcarp)
 * `--exclude-table` argument (jmcarp)
 * Optimize by using bulk inserts (jmcarp)
+
+0.2.4 (2015-07-08)
+++++++++++++++++++
+
+* wildcards for `--exclude-table` (thanks jmcarp)
+* `--full-table` arg
+
+
