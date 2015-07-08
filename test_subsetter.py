@@ -11,6 +11,7 @@ class DummyArgs(object):
     children = 25
     config = {}
     exclude_tables = []
+    full_tables = []
     buffer = 1000
 
 dummy_args = DummyArgs()
@@ -90,3 +91,13 @@ class OverallTest(unittest.TestCase):
         src.create_subset_in(dest)
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 0)
+
+    def test_full_tables(self):
+        args_with_full = DummyArgs()
+        args_with_full.full_tables = ['city',]
+        src = Db(self.source_sqla, args_with_full)
+        dest = Db(self.dest_sqla, args_with_full)
+        src.assign_target(dest)
+        src.create_subset_in(dest)
+        cities = self.dest_db.execute("SELECT * FROM city").fetchall()
+        self.assertEqual(len(cities), 4)

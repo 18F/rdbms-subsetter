@@ -186,11 +186,13 @@ class Db(object):
             tbl.random_row_func = types.MethodType(_random_row_func, tbl)
             tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
             tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
+            if not tbl.pk:
+                tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name)]
             tbl.filtered_by = types.MethodType(_filtered_by, tbl)
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
             tbl.child_fks = []
-            tbl.find_n_rows(estimate=True)
+            tbl.find_n_rows(estimate=(tbl.name not in self.args.full_tables))
             self.tables[(tbl.schema, tbl.name)] = tbl
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
             constraints = args.config.get('constraints', {}).get(tbl_name, [])
@@ -212,14 +214,17 @@ class Db(object):
             target.required = deque()
             target.pending = dict()
             target.done = set()
-            if tbl.n_rows:
-                if self.args.logarithmic:
-                    target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
-                                                * self.args.fraction)) or 1
-                else:
-                    target.n_rows_desired = int(tbl.n_rows * self.args.fraction) or 1
+            if tbl.name in self.args.full_tables:
+                target.n_rows_desired = tbl.n_rows
             else:
-                target.n_rows_desired = 0
+                if tbl.n_rows:
+                    if self.args.logarithmic:
+                        target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
+                                                    * self.args.fraction)) or 1
+                    else:
+                        target.n_rows_desired = int(tbl.n_rows * self.args.fraction) or 1
+                else:
+                    target.n_rows_desired = 0
             target.source = tbl
             tbl.target = target
             target.completeness_score = types.MethodType(_completeness_score, target)
@@ -320,6 +325,7 @@ class Db(object):
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
 
+        #import pdb; pdb.set_trace()
         while True:
             targets = sorted(target_db.tables.values(),
                              key=lambda t: t.completeness_score())
@@ -409,6 +415,8 @@ argparser.add_argument('--schema', help='Non-default schema to include',
 argparser.add_argument('--config', help='Path to configuration .json file',
                        type=argparse.FileType('r'))
 argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude',
+                       type=str, action='append', default=[])
+argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to include every row of',
                        type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
