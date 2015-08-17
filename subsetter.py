@@ -463,7 +463,7 @@ def generate():
         source.assign_target(target)
         if source.confirm():
             source.create_subset_in(target)
-    update_sequences(source, target)
+        update_sequences(source, target)
 
 import re
 from sqlalchemy import cast
