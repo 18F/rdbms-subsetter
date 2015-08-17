@@ -220,7 +220,7 @@ class Db(object):
                                 SELECT enum_range(NULL::%s);
                             ''' % enum_name).fetchone()
                         # create type caster
-                        tbl.c[col.name].type = ArrayOfEnum(ENUM(name='language'))
+                        tbl.c[col.name].type = ArrayOfEnum(ENUM(name=enum_name))
                     except:
                         pass  # not an enum
 
