@@ -160,8 +160,8 @@ def _by_pk(self, pk):
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
     result = ( 0
-              - (len(self.requested) / float(self.n_rows or 1 ))
-              - len(self.required))
+               - (len(self.requested) / float(self.n_rows or 1 ))
+               - len(self.required))
     if not self.required:  # anything in `required` queue disqualifies
         result += (self.n_rows / (self.n_rows_desired or 1))**0.33
     return result
@@ -182,6 +182,9 @@ class Db(object):
             if any(fnmatch.fnmatch(tbl.name, each) for each in args.exclude_tables):
                 continue
             tbl.db = self
+
+            self.fix_postgres_array_of_enum(tbl)
+
             # TODO: Replace all these monkeypatches with an instance assigment
             tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
             tbl.random_row_func = types.MethodType(_random_row_func, tbl)
@@ -193,7 +196,7 @@ class Db(object):
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
             tbl.child_fks = []
-            estimate_rows = not(any(fnmatch.fnmatch(tbl.name, each) 
+            estimate_rows = not(any(fnmatch.fnmatch(tbl.name, each)
                                     for each in self.args.full_tables))
             tbl.find_n_rows(estimate=estimate_rows)
             self.tables[(tbl.schema, tbl.name)] = tbl
@@ -203,6 +206,23 @@ class Db(object):
                 fk['constrained_schema'] = tbl_schema
                 fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
                 self.tables[(fk['referred_schema'], fk['referred_table'])].child_fks.append(fk)
+
+    def fix_postgres_array_of_enum(self, tbl):
+        if self.engine.name == 'postgresql':
+            from sqlalchemy.dialects.postgresql import ENUM
+
+            for col in tbl.c:
+                col_str = str(col.type)
+                if col_str.endswith('[]'):  # this is an array
+                    enum_name = col_str[:-2]
+                    try: # test if 'enum_name' is an enum
+                        self.conn.execute('''
+                                SELECT enum_range(NULL::%s);
+                            ''' % enum_name).fetchone()
+                        # create type caster
+                        tbl.c[col.name].type = ArrayOfEnum(ENUM(name='language'))
+                    except:
+                        pass  # not an enum
 
     def __repr__(self):
         return "Db('%s')" % self.sqla_conn
@@ -217,14 +237,14 @@ class Db(object):
             target.required = deque()
             target.pending = dict()
             target.done = set()
-            if any(fnmatch.fnmatch(tbl.name, each) 
+            if any(fnmatch.fnmatch(tbl.name, each)
                    for each in self.args.full_tables):
                 target.n_rows_desired = tbl.n_rows
             else:
                 if tbl.n_rows:
                     if self.args.logarithmic:
                         target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
-                                                    * self.args.fraction)) or 1
+                                                             * self.args.fraction)) or 1
                     else:
                         target.n_rows_desired = int(tbl.n_rows * self.args.fraction) or 1
                 else:
@@ -444,6 +464,28 @@ def generate():
         if source.confirm():
             source.create_subset_in(target)
     update_sequences(source, target)
+
+import re
+from sqlalchemy import cast
+from sqlalchemy.dialects.postgresql import ARRAY
+
+class ArrayOfEnum(ARRAY):
+    def bind_expression(self, bindvalue):
+        return cast(bindvalue, self)
+
+    def result_processor(self, dialect, coltype):
+        super_rp = super(ArrayOfEnum, self).result_processor(dialect, coltype)
+
+        def handle_raw_string(value):
+            if value is None:
+                return []
+            inner = re.match(r"^{(.*)}$", value).group(1)
+            return inner.split(",")
+
+        def process(value):
+            return super_rp(handle_raw_string(value))
+        return process
+
 
 if __name__ == '__main__':
     generate()
