@@ -39,4 +39,9 @@
 * wildcards for `--exclude-table` (thanks jmcarp)
 * `--full-table` arg
 
+0.2.5 (2015-10-21)
+++++++++++++++++++
 
+* `--table` argument (birdonfire)
+* table-related arguments support schema prefixes (birdonfire)
+* Sequence updating now respects `--table` and `--exclude-table` (birdonfire)

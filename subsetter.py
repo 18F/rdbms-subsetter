@@ -76,7 +76,7 @@ try:
 except NameError:
     pass
 
-__version__ = '0.2.4'
+__version__ = '0.2.5'
 
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
@@ -166,6 +166,19 @@ def _completeness_score(self):
         result += (self.n_rows / (self.n_rows_desired or 1))**0.33
     return result
 
+def _table_matches_any_pattern(schema, table, patterns):
+    """Test if the table `<schema>.<table>` matches any of the provided patterns.
+
+    Will attempt to match both `schema.table` and just `table` against each pattern.
+
+    Params:
+        - schema.      Name of the schema the table belongs to.
+        - table.       Name of the table.
+        - patterns.    The patterns to try.
+    """
+    qual_name = '{}.{}'.format(schema, table)
+    return any(fnmatch.fnmatch(qual_name, each) or fnmatch.fnmatch(table, each) for each in patterns)
+
 class Db(object):
 
     def __init__(self, sqla_conn, args, schema=None):
@@ -179,7 +192,9 @@ class Db(object):
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
         for tbl in self.meta.sorted_tables:
-            if any(fnmatch.fnmatch(tbl.name, each) for each in args.exclude_tables):
+            if args.tables and not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.tables):
+                continue
+            if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.exclude_tables):
                 continue
             tbl.db = self
             # TODO: Replace all these monkeypatches with an instance assigment
@@ -193,8 +208,7 @@ class Db(object):
             tbl.by_pk = types.MethodType(_by_pk, tbl)
             tbl.pk_val = types.MethodType(_pk_val, tbl)
             tbl.child_fks = []
-            estimate_rows = not(any(fnmatch.fnmatch(tbl.name, each) 
-                                    for each in self.args.full_tables))
+            estimate_rows = not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables)
             tbl.find_n_rows(estimate=estimate_rows)
             self.tables[(tbl.schema, tbl.name)] = tbl
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
@@ -217,8 +231,7 @@ class Db(object):
             target.required = deque()
             target.pending = dict()
             target.done = set()
-            if any(fnmatch.fnmatch(tbl.name, each) 
-                   for each in self.args.full_tables):
+            if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables):
                 target.n_rows_desired = tbl.n_rows
             else:
                 if tbl.n_rows:
@@ -358,7 +371,7 @@ class Db(object):
         target_db.flush()
 
 
-def update_sequences(source, target):
+def update_sequences(source, target, tables, exclude_tables):
     """Set database sequence values to match the source db
 
        Needed to avoid subsequent unique key violations after DB build.
@@ -367,12 +380,19 @@ def update_sequences(source, target):
     if source.engine.name != 'postgresql' or target.engine.name != 'postgresql':
         return
     qry = """SELECT 'SELECT last_value FROM ' || n.nspname ||
-                     '.' || c.relname || ';' AS qry,
-                    n.nspname || '.' || c.relname AS qual_name
-             FROM   pg_namespace n
-             JOIN   pg_class c ON (n.oid = c.relnamespace)
-             WHERE  c.relkind = 'S'"""
-    for (qry, qual_name) in list(source.conn.execute(qry)):
+                     '.' || s.relname || ';' AS qry,
+                    n.nspname || '.' || s.relname AS qual_name,
+                    n.nspname AS schema, t.relname AS table
+             FROM pg_class s
+             JOIN pg_depend d ON (d.objid=s.oid AND d.classid='pg_class'::regclass AND d.refclassid='pg_class'::regclass)
+             JOIN pg_class t ON (t.oid=d.refobjid)
+             JOIN pg_namespace n ON (n.oid=t.relnamespace)
+             WHERE s.relkind='S' AND d.deptype='a'"""
+    for (qry, qual_name, schema, table) in list(source.conn.execute(qry)):
+        if tables and not _table_matches_any_pattern(schema, table, tables):
+            continue
+        if _table_matches_any_pattern(schema, table, exclude_tables):
+            continue
         (lastval, ) = source.conn.execute(qry).first()
         nextval = int(lastval) + 1
         updater = "ALTER SEQUENCE %s RESTART WITH %s;" % (qual_name, nextval)
@@ -418,7 +438,9 @@ argparser.add_argument('--schema', help='Non-default schema to include',
                        type=str, action='append', default=[])
 argparser.add_argument('--config', help='Path to configuration .json file',
                        type=argparse.FileType('r'))
-argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude',
+argparser.add_argument('--table', '-t', dest='tables', help='Include the named table(s) only',
+                       type=str, action='append', default=[])
+argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude. When both -t and -T are given, the behavior is to include just the tables that match at least one -t switch but no -T switches.',
                        type=str, action='append', default=[])
 argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to include every row of',
                        type=str, action='append', default=[])
@@ -443,7 +465,7 @@ def generate():
         source.assign_target(target)
         if source.confirm():
             source.create_subset_in(target)
-    update_sequences(source, target)
+    update_sequences(source, target, args.tables, args.exclude_tables)
 
 if __name__ == '__main__':
     generate()

@@ -10,6 +10,7 @@ class DummyArgs(object):
     force_rows = {}
     children = 25
     config = {}
+    tables = []
     exclude_tables = []
     full_tables = []
     buffer = 1000
@@ -85,6 +86,22 @@ class OverallTest(unittest.TestCase):
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 1)
 
+    def test_tables(self):
+        args_with_tables = DummyArgs()
+        args_with_tables.tables = ['state', 'city']
+        src = Db(self.source_sqla, args_with_tables)
+        dest = Db(self.dest_sqla, args_with_tables)
+        src.assign_target(dest)
+        src.create_subset_in(dest)
+        states = self.dest_db.execute("SELECT * FROM state").fetchall()
+        self.assertEqual(len(states), 1)
+        cities = self.dest_db.execute("SELECT * FROM city").fetchall()
+        self.assertEqual(len(cities), 1)
+        excluded_tables = ('landmark', 'languages_better_than_python', 'zeppos', 'zeppelins')
+        for table in excluded_tables:
+            rows = self.dest_db.execute("SELECT * FROM {}".format(table)).fetchall()
+            self.assertEqual(len(rows), 0)
+
     def test_exclude_tables(self):
         args_with_exclude = DummyArgs()
         args_with_exclude.exclude_tables = ['zeppelins',]
@@ -94,6 +111,21 @@ class OverallTest(unittest.TestCase):
         src.create_subset_in(dest)
         zeppelins = self.dest_db.execute("SELECT * FROM zeppelins").fetchall()
         self.assertEqual(len(zeppelins), 0)
+
+    def test_tables_and_exclude_tables(self):
+        args_with_tables_and_exclude_tables = DummyArgs()
+        args_with_tables_and_exclude_tables.tables = ['state', 'city']
+        args_with_tables_and_exclude_tables.exclude_tables = ['city']
+        src = Db(self.source_sqla, args_with_tables_and_exclude_tables)
+        dest = Db(self.dest_sqla, args_with_tables_and_exclude_tables)
+        src.assign_target(dest)
+        src.create_subset_in(dest)
+        states = self.dest_db.execute("SELECT * FROM state").fetchall()
+        self.assertEqual(len(states), 1)
+        excluded_tables = ('city', 'landmark', 'languages_better_than_python', 'zeppos', 'zeppelins')
+        for table in excluded_tables:
+            rows = self.dest_db.execute("SELECT * FROM {}".format(table)).fetchall()
+            self.assertEqual(len(rows), 0)
 
     def test_full_tables(self):
         args_with_full = DummyArgs()
