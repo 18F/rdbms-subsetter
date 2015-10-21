@@ -65,6 +65,13 @@ Currently the target database must contain the corresponding tables in its own
 schema of the same name (moving between schemas of different names is not yet
 supported).
 
+You can restrict the tables included in the sample via the ``--table``
+(``-t``) and ``--exclude-table`` (``-T``) parameters (which can be used
+multiple times). These parameters take a table name or pattern with wildcards
+(``*``), and supports both qualified names (i.e. ``schema.table``) and simple
+names. When both ``-t`` and ``--T`` are given, the behavior is to include just
+the tables that match at least one ``-t`` switch, but no ``-T`` switches.
+
 Configuration file
 ------------------
 
