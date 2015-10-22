@@ -46,3 +46,4 @@
 * table-related arguments support schema prefixes (birdonfire)
 * Sequence updating now respects `--table` and `--exclude-table` (birdonfire)
 * Force float division in ``_completeness_score`` (birdonfire)
+* Add timestamp to log output (birdonfire)

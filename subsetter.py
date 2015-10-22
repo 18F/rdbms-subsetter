@@ -453,6 +453,8 @@ argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to
                        type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
+log_format="%(asctime)s %(levelname)-5s %(message)s"
+
 def generate():
     args = argparser.parse_args()
     args.force_rows = {}
@@ -462,6 +464,7 @@ def generate():
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
+    logging.basicConfig(format=log_format)
     schemas = args.schema + [None,]
     args.config = json.load(args.config) if args.config else {}
     for schema in schemas:
