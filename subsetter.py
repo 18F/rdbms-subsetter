@@ -159,11 +159,18 @@ def _by_pk(self, pk):
 
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
-    result = ( 0
-              - (len(self.requested) / float(self.n_rows or 1 ))
-              - len(self.required))
+    table = self.name
+    requested = len(self.requested)
+    required = len(self.required)
+    n_rows = float(self.n_rows)
+    n_rows_desired = float(self.n_rows_desired)
+    logging.debug("%s.requested      = %d", table, requested)
+    logging.debug("%s.required       = %d", table, required)
+    logging.debug("%s.n_rows         = %d", table, n_rows)
+    logging.debug("%s.n_rows_desired = %d", table, n_rows_desired)
+    result = 0 - (requested / (n_rows or 1)) - required
     if not self.required:  # anything in `required` queue disqualifies
-        result += (self.n_rows / (self.n_rows_desired or 1))**0.33
+        result += (n_rows / (n_rows_desired or 1))**0.33
     return result
 
 def _table_matches_any_pattern(schema, table, patterns):

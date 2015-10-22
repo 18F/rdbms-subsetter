@@ -45,3 +45,4 @@
 * `--table` argument (birdonfire)
 * table-related arguments support schema prefixes (birdonfire)
 * Sequence updating now respects `--table` and `--exclude-table` (birdonfire)
+* Force float division in ``_completeness_score`` (birdonfire)
