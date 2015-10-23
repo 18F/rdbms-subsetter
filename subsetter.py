@@ -220,6 +220,7 @@ class Db(object):
             self.tables[(tbl.schema, tbl.name)] = tbl
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
             constraints = args.config.get('constraints', {}).get(tbl_name, [])
+            tbl.constraints = constraints
             for fk in (tbl.fks + constraints):
                 fk['constrained_schema'] = tbl_schema
                 fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
@@ -295,6 +296,26 @@ class Db(object):
                     if not target_parent_row:
                         source_parent_row = self.conn.execute(slct).first()
                         self.create_row_in(source_parent_row, target_db, target_parent)
+
+            # make sure that all referenced rows are in referenced table(s)
+            for constraint in target.constraints:
+                target_referred = target_db.tables[(constraint['referred_schema'], constraint['referred_table'])]
+                slct = sa.sql.select([target_referred,])
+                any_non_null_key_columns = False
+                for (referred_col, constrained_col) in zip(constraint['referred_columns'],
+                                                           constraint['constrained_columns']):
+                    slct = slct.where(target_referred.c[referred_col] ==
+                                      source_row[constrained_col])
+                    if source_row[constrained_col] is not None:
+                        any_non_null_key_columns = True
+                        break
+                if any_non_null_key_columns:
+                    target_referred_row = target_db.conn.execute(slct).first()
+                    if not target_referred_row:
+                        source_referred_row = self.conn.execute(slct).first()
+                        # because constraints aren't enforced like real FKs, the referred row isn't guaranteed to exist
+                        if source_referred_row:
+                            self.create_row_in(source_referred_row, target_db, target_referred)
 
             pks = tuple((source_row[key] for key in target.pk))
             target.pending[pks] = source_row

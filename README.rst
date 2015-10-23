@@ -94,6 +94,9 @@ in JSON.  For example,
       }
     }
 
+``rdbms-subsetter`` treats these constraints like real foreign keys and fetches
+parent and child rows as described above.
+
 Installing
 ----------
 
