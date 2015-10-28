@@ -159,7 +159,7 @@ def _by_pk(self, pk):
 
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
-    table = self.name
+    table = (self.schema if self.schema else "") + self.name
     requested = len(self.requested)
     required = len(self.required)
     n_rows = float(self.n_rows)
@@ -188,36 +188,38 @@ def _table_matches_any_pattern(schema, table, patterns):
 
 class Db(object):
 
-    def __init__(self, sqla_conn, args, schema=None):
+    def __init__(self, sqla_conn, args, schemas=[None]):
         self.args = args
         self.sqla_conn = sqla_conn
-        self.schema = schema
+        self.schemas = schemas
         self.engine = sa.create_engine(sqla_conn)
-        self.meta = sa.MetaData(bind=self.engine) # excised schema=schema to prevent errors
-        self.meta.reflect(schema=self.schema)
         self.inspector = Inspector(bind=self.engine)
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
-        for tbl in self.meta.sorted_tables:
-            if args.tables and not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.tables):
-                continue
-            if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.exclude_tables):
-                continue
-            tbl.db = self
-            # TODO: Replace all these monkeypatches with an instance assigment
-            tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
-            tbl.random_row_func = types.MethodType(_random_row_func, tbl)
-            tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
-            tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
-            if not tbl.pk:
-                tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name)]
-            tbl.filtered_by = types.MethodType(_filtered_by, tbl)
-            tbl.by_pk = types.MethodType(_by_pk, tbl)
-            tbl.pk_val = types.MethodType(_pk_val, tbl)
-            tbl.child_fks = []
-            estimate_rows = not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables)
-            tbl.find_n_rows(estimate=estimate_rows)
-            self.tables[(tbl.schema, tbl.name)] = tbl
+
+        for schema in self.schemas:
+            meta = sa.MetaData(bind=self.engine) # excised schema=schema to prevent errors
+            meta.reflect(schema=schema)
+            for tbl in meta.sorted_tables:
+                if args.tables and not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.tables):
+                    continue
+                if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.exclude_tables):
+                    continue
+                tbl.db = self
+                # TODO: Replace all these monkeypatches with an instance assigment
+                tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
+                tbl.random_row_func = types.MethodType(_random_row_func, tbl)
+                tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
+                tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
+                if not tbl.pk:
+                    tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name)]
+                tbl.filtered_by = types.MethodType(_filtered_by, tbl)
+                tbl.by_pk = types.MethodType(_by_pk, tbl)
+                tbl.pk_val = types.MethodType(_pk_val, tbl)
+                tbl.child_fks = []
+                estimate_rows = not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables)
+                tbl.find_n_rows(estimate=estimate_rows)
+                self.tables[(tbl.schema, tbl.name)] = tbl
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
             constraints = args.config.get('constraints', {}).get(tbl_name, [])
             tbl.constraints = constraints
@@ -488,14 +490,13 @@ def generate():
     logging.basicConfig(format=log_format)
     schemas = args.schema + [None,]
     args.config = json.load(args.config) if args.config else {}
-    for schema in schemas:
-        source = Db(args.source, args, schema=schema)
-        target = Db(args.dest, args, schema=schema)
-        if set(source.tables.keys()) != set(target.tables.keys()):
-            raise Exception('Source and target databases have different tables')
-        source.assign_target(target)
-        if source.confirm():
-            source.create_subset_in(target)
+    source = Db(args.source, args, schemas)
+    target = Db(args.dest, args, schemas)
+    if set(source.tables.keys()) != set(target.tables.keys()):
+        raise Exception('Source and target databases have different tables')
+    source.assign_target(target)
+    if source.confirm():
+        source.create_subset_in(target)
     update_sequences(source, target, args.tables, args.exclude_tables)
 
 if __name__ == '__main__':
