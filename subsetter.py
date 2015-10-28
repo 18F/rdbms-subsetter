@@ -220,8 +220,13 @@ class Db(object):
                 estimate_rows = not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables)
                 tbl.find_n_rows(estimate=estimate_rows)
                 self.tables[(tbl.schema, tbl.name)] = tbl
+        all_constraints = args.config.get('constraints', {})
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
-            constraints = args.config.get('constraints', {}).get(tbl_name, [])
+            qualified = "{}.{}".format(tbl_schema, tbl_name)
+            if qualified in all_constraints:
+                constraints = all_constraints[qualified]
+            else:
+                constraints=all_constraints.get(tbl_name, [])
             tbl.constraints = constraints
             for fk in (tbl.fks + constraints):
                 fk['constrained_schema'] = tbl_schema
