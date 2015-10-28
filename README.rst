@@ -94,6 +94,9 @@ in JSON.  For example,
       }
     }
 
+Optionally, you can qualify ``child_table_name``, i.e.
+``schema_name.child_table_name``. Cross-schema constraints are also supported.
+
 ``rdbms-subsetter`` treats these constraints like real foreign keys and fetches
 parent and child rows as described above.
 

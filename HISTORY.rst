@@ -49,3 +49,4 @@
 * Add timestamp to log output (birdonfire)
 * Fetch parent rows required by configured constraints (birdonfire)
 * Respect cross-schema constraints (birdonfire)
+* Support qualified table names in constraint keys (birdonfire)
