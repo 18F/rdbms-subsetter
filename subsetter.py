@@ -277,8 +277,12 @@ class Db(object):
                         self.create_row_in(source_parent_row, target_db, target_parent)
 
             pks = tuple((source_row[key] for key in target.pk))
-            target.pending[pks] = source_row
             target.n_rows += 1
+
+            if self.args.buffer == 0:
+                target_db.insert_one(target, pks, source_row)
+            else:
+                target.pending[pks] = source_row
 
         for child_fk in target.child_fks:
             child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]
@@ -303,6 +307,10 @@ class Db(object):
             self.tables.values(),
             0
         )
+
+    def insert_one(self, table, pk, values):
+        self.conn.execute(table.insert(), values)
+        table.done.add(pk)
 
     def flush(self):
         for table in self.tables.values():
@@ -352,10 +360,11 @@ class Db(object):
             self.create_row_in(source_row, target_db, target,
                                prioritized=prioritized)
 
-            if target_db.pending > self.args.buffer:
+            if target_db.pending > self.args.buffer > 0:
                 target_db.flush()
 
-        target_db.flush()
+        if self.args.buffer > 0:
+            target_db.flush()
 
 
 def update_sequences(source, target):
@@ -405,7 +414,7 @@ argparser.add_argument('fraction', help='Proportion of rows to create in dest (0
                        type=fraction)
 argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; try 0.5 for fraction',
                        action='store_true')
-argparser.add_argument('-b', '--buffer', help='Number of records to store in buffer before flush',
+argparser.add_argument('-b', '--buffer', help='Number of records to store in buffer before flush; use 0 for no buffer',
                        type=int, default=1000)
 argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_loglevels,
                        default='INFO')

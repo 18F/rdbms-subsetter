@@ -65,6 +65,12 @@ Currently the target database must contain the corresponding tables in its own
 schema of the same name (moving between schemas of different names is not yet
 supported).
 
+When target db write buffering is enabled (which it is by default), subset
+extraction for complex schemas that have tangled foreign key relationships may
+fail.  To disable write buffering, set the buffer parameter to 0::
+
+    rdbms-subsetter  postgresql://:@/bigdb postgresql://:@/littledb 0.05 -b 0
+
 Configuration file
 ------------------
 
