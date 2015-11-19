@@ -39,7 +39,7 @@
 * wildcards for `--exclude-table` (thanks jmcarp)
 * `--full-table` arg
 
-0.2.5 (2015-10-29)
+0.2.5 (2015-11-16)
 ++++++++++++++++++
 
 * `--table` argument (birdonfire)
@@ -50,3 +50,4 @@
 * Fetch parent rows required by configured constraints (birdonfire)
 * Respect cross-schema constraints (birdonfire)
 * Support qualified table names in constraint keys (birdonfire)
+* guarantee fetching 100% of `--full-table` tables (birdonfire)

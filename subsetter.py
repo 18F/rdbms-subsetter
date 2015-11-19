@@ -40,7 +40,7 @@ can force rdbms-subsetter to include specific rows (and their dependencies) with
 ``force=<tablename>:<primary key value>``.  The immediate children of these rows
 are also exempted from the ``--children`` limit.
 
-rdbms-subsetter only performs the INSERTS; it's your responsibility to set
+rdbms-subsetter only performs the inserts; it's your responsibility to set
 up the target database first, with its foreign key constraints.  The easiest
 way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
 
@@ -160,14 +160,19 @@ def _by_pk(self, pk):
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
     table = (self.schema if self.schema else "") + self.name
+    fetch_all = self.fetch_all
     requested = len(self.requested)
     required = len(self.required)
     n_rows = float(self.n_rows)
     n_rows_desired = float(self.n_rows_desired)
+    logging.debug("%s.fetch_all      = %s", table, fetch_all)
     logging.debug("%s.requested      = %d", table, requested)
     logging.debug("%s.required       = %d", table, required)
     logging.debug("%s.n_rows         = %d", table, n_rows)
     logging.debug("%s.n_rows_desired = %d", table, n_rows_desired)
+    if fetch_all:
+        if n_rows < n_rows_desired:
+            return 1 + (n_rows or 1) - (n_rows_desired or 1)
     result = 0 - (requested / (n_rows or 1)) - required
     if not self.required:  # anything in `required` queue disqualifies
         result += (n_rows / (n_rows_desired or 1))**0.33
@@ -246,8 +251,10 @@ class Db(object):
             target.required = deque()
             target.pending = dict()
             target.done = set()
+            target.fetch_all = False
             if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables):
                 target.n_rows_desired = tbl.n_rows
+                target.fetch_all = True
             else:
                 if tbl.n_rows:
                     if self.args.logarithmic:
