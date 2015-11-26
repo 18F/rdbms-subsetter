@@ -67,6 +67,7 @@ from collections import OrderedDict, deque
 import math
 import random
 import types
+from blinker import signal
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
@@ -165,6 +166,11 @@ def _completeness_score(self):
     if not self.required:  # anything in `required` queue disqualifies
         result += (self.n_rows / (self.n_rows_desired or 1))**0.33
     return result
+
+def _import_modules(import_list):
+    for module_name in import_list:
+        __import__(module_name)
+
 
 class Db(object):
 
@@ -422,10 +428,14 @@ argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tab
                        type=str, action='append', default=[])
 argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to include every row of',
                        type=str, action='append', default=[])
+argparser.add_argument('--import', '-i', dest='import_list',
+                       help='Dotted module name to import; e.g. custom.signalhandler',
+                       type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 def generate():
     args = argparser.parse_args()
+    _import_modules(args.import_list)
     args.force_rows = {}
     for force_row in (args.force or []):
         (table_name, pk) = force_row.split(':')
