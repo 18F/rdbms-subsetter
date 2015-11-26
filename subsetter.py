@@ -79,6 +79,8 @@ except NameError:
 
 __version__ = '0.2.4'
 
+SIGNAL_ROW_ADDED = 'row_added'
+
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
     if estimate:
@@ -285,6 +287,9 @@ class Db(object):
             pks = tuple((source_row[key] for key in target.pk))
             target.pending[pks] = source_row
             target.n_rows += 1
+
+            signal(SIGNAL_ROW_ADDED).send(self, source_row=source_row, target_db=target_db, target_table=target,
+                                          prioritized=prioritized)
 
         for child_fk in target.child_fks:
             child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]

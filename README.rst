@@ -87,6 +87,44 @@ in JSON.  For example,
       }
     }
 
+Signal handlers
+---------------
+If you provide a python module with appropriate signal handling functions, and specify that module
+when calling the script like ``--import=my.signals.signal_handlers``, then any signal handlers that you
+have registered in your module will be called when the corresponding signals are sent during
+the DB subsetting process.
+
+At the moment, the only signal is ``subsetter.SIGNAL_ROW_ADDED``.
+
+An example signal handling module::
+
+  from blinker import signal
+  import subsetter
+
+  row_added_signal = signal(subsetter.SIGNAL_ROW_ADDED)
+  @row_added_signal.connect
+  def row_added(source_db, **kwargs):
+     print("row_added called with source db: {}, and kwargs: {}".format(source_db, kwargs))
+
+SIGNAL_ROW_ADDED
+^^^^^^^^^^^^^^^^
+This signal will be sent when a new row has been selected for adding to the target database.
+The associated signal handler should have the following signature::
+
+    def row_added(source_db, **kwargs):
+
+``source_db`` is a ``subsetter.Db`` instance.
+
+``kwargs`` contains:
+
+- ``target_db``: a ``subsetter.Db`` instances.
+
+- ``source_row``: an ``sqlalchemy.engine.RowProxy`` with the values from the row that will be inserted.
+
+- ``target_table``: an ``sqlalchemy.Table``.
+
+- ``prioritized``: a ``bool`` representing whether of not all child, grandchild, etc. rows should be included.
+
 Installing
 ----------
 
