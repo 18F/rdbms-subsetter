@@ -1,0 +1,6 @@
+# Packaging
+twine
+wheel
+
+# Testing
+nosetests

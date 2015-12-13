@@ -53,3 +53,5 @@
 * guarantee fetching 100% of `--full-table` tables (birdonfire)
 * allow disabling of write buffering (brki)
 * support event handlers (brki)
+* packaging changed to wheel (jmcarp)
+* documentation bug cleanup (jmcarp)

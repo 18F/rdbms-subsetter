@@ -9,7 +9,15 @@ except ImportError:
     from distutils.core import setup
 
 if sys.argv[-1] == 'publish':
-    os.system('python setup.py sdist upload')
+    # Clean existing build artifacts
+    os.system('rm -rf dist')
+    os.system('rm -rf build')
+    os.system('rm -rf rdbms_subsetter.egg-info')
+
+    # Build and publish
+    os.system('python setup.py sdist bdist_wheel')
+    os.system('twine upload dist/*')
+
     sys.exit()
 
 curdir = os.path.dirname(os.path.realpath(__file__))
@@ -22,10 +30,10 @@ setup(
     long_description=readme,
     author='Catherine Devlin',
     author_email='catherine.devlin@gsa.gov',
-    url='https://github.com/18f/https://github.com/18F/rdbms-subsetter',
+    url='https://github.com/18F/rdbms-subsetter',
     install_requires=[
-      "sqlalchemy",
-      "blinker",
+        "blinker",
+        "sqlalchemy",
     ],
     license="CC0",
     keywords='database testing',
