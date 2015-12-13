@@ -67,6 +67,7 @@ from collections import OrderedDict, deque
 import math
 import random
 import types
+from blinker import signal
 import sqlalchemy as sa
 from sqlalchemy.engine.reflection import Inspector
 
@@ -77,6 +78,8 @@ except NameError:
     pass
 
 __version__ = '0.2.5'
+
+SIGNAL_ROW_ADDED = 'row_added'
 
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
@@ -190,6 +193,10 @@ def _table_matches_any_pattern(schema, table, patterns):
     """
     qual_name = '{}.{}'.format(schema, table)
     return any(fnmatch.fnmatch(qual_name, each) or fnmatch.fnmatch(table, each) for each in patterns)
+
+def _import_modules(import_list):
+    for module_name in import_list:
+        __import__(module_name)
 
 class Db(object):
 
@@ -338,6 +345,8 @@ class Db(object):
                 target_db.insert_one(target, pks, source_row)
             else:
                 target.pending[pks] = source_row
+            signal(SIGNAL_ROW_ADDED).send(self, source_row=source_row, target_db=target_db, target_table=target,
+                                          prioritized=prioritized)
 
         for child_fk in target.child_fks:
             child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]
@@ -495,12 +504,16 @@ argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tab
                        type=str, action='append', default=[])
 argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to include every row of',
                        type=str, action='append', default=[])
+argparser.add_argument('--import', '-i', dest='import_list',
+                       help='Dotted module name to import; e.g. custom.signalhandler',
+                       type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
 
 log_format="%(asctime)s %(levelname)-5s %(message)s"
 
 def generate():
     args = argparser.parse_args()
+    _import_modules(args.import_list)
     args.force_rows = {}
     for force_row in (args.force or []):
         (table_name, pk) = force_row.split(':')
