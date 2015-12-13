@@ -3,4 +3,5 @@ twine
 wheel
 
 # Testing
-nosetests
+coverage
+nose

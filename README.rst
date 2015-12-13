@@ -4,6 +4,9 @@ rdbms-subsetter
 .. image:: https://travis-ci.org/18F/rdbms-subsetter.svg?branch=master
    :target: https://travis-ci.org/18F/rdbms-subsetter
 
+.. image:: https://codecov.io/github/18F/rdbms-subsetter/coverage.svg?branch=master
+    :target: https://codecov.io/github/18F/rdbms-subsetter?branch=master
+
 Generate a random sample of rows from a relational database that preserves
 referential integrity - so long as constraints are defined, all parent rows
 will exist for child rows.
