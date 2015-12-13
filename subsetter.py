@@ -40,7 +40,7 @@ can force rdbms-subsetter to include specific rows (and their dependencies) with
 ``force=<tablename>:<primary key value>``.  The immediate children of these rows
 are also exempted from the ``--children`` limit.
 
-rdbms-subsetter only performs the INSERTS; it's your responsibility to set
+rdbms-subsetter only performs the inserts; it's your responsibility to set
 up the target database first, with its foreign key constraints.  The easiest
 way to do this is with your RDBMS's dump utility.  For example, for PostgreSQL,
 
@@ -76,7 +76,7 @@ try:
 except NameError:
     pass
 
-__version__ = '0.2.4'
+__version__ = '0.2.5'
 
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
@@ -159,46 +159,80 @@ def _by_pk(self, pk):
 
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
-    result = ( 0
-              - (len(self.requested) / float(self.n_rows or 1 ))
-              - len(self.required))
+    table = (self.schema if self.schema else "") + self.name
+    fetch_all = self.fetch_all
+    requested = len(self.requested)
+    required = len(self.required)
+    n_rows = float(self.n_rows)
+    n_rows_desired = float(self.n_rows_desired)
+    logging.debug("%s.fetch_all      = %s", table, fetch_all)
+    logging.debug("%s.requested      = %d", table, requested)
+    logging.debug("%s.required       = %d", table, required)
+    logging.debug("%s.n_rows         = %d", table, n_rows)
+    logging.debug("%s.n_rows_desired = %d", table, n_rows_desired)
+    if fetch_all:
+        if n_rows < n_rows_desired:
+            return 1 + (n_rows or 1) - (n_rows_desired or 1)
+    result = 0 - (requested / (n_rows or 1)) - required
     if not self.required:  # anything in `required` queue disqualifies
-        result += (self.n_rows / (self.n_rows_desired or 1))**0.33
+        result += (n_rows / (n_rows_desired or 1))**0.33
     return result
+
+def _table_matches_any_pattern(schema, table, patterns):
+    """Test if the table `<schema>.<table>` matches any of the provided patterns.
+
+    Will attempt to match both `schema.table` and just `table` against each pattern.
+
+    Params:
+        - schema.      Name of the schema the table belongs to.
+        - table.       Name of the table.
+        - patterns.    The patterns to try.
+    """
+    qual_name = '{}.{}'.format(schema, table)
+    return any(fnmatch.fnmatch(qual_name, each) or fnmatch.fnmatch(table, each) for each in patterns)
 
 class Db(object):
 
-    def __init__(self, sqla_conn, args, schema=None):
+    def __init__(self, sqla_conn, args, schemas=[None]):
         self.args = args
         self.sqla_conn = sqla_conn
-        self.schema = schema
+        self.schemas = schemas
         self.engine = sa.create_engine(sqla_conn)
-        self.meta = sa.MetaData(bind=self.engine) # excised schema=schema to prevent errors
-        self.meta.reflect(schema=self.schema)
         self.inspector = Inspector(bind=self.engine)
         self.conn = self.engine.connect()
         self.tables = OrderedDict()
-        for tbl in self.meta.sorted_tables:
-            if any(fnmatch.fnmatch(tbl.name, each) for each in args.exclude_tables):
-                continue
-            tbl.db = self
-            # TODO: Replace all these monkeypatches with an instance assigment
-            tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
-            tbl.random_row_func = types.MethodType(_random_row_func, tbl)
-            tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
-            tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
-            if not tbl.pk:
-                tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name)]
-            tbl.filtered_by = types.MethodType(_filtered_by, tbl)
-            tbl.by_pk = types.MethodType(_by_pk, tbl)
-            tbl.pk_val = types.MethodType(_pk_val, tbl)
-            tbl.child_fks = []
-            estimate_rows = not(any(fnmatch.fnmatch(tbl.name, each) 
-                                    for each in self.args.full_tables))
-            tbl.find_n_rows(estimate=estimate_rows)
-            self.tables[(tbl.schema, tbl.name)] = tbl
+
+        for schema in self.schemas:
+            meta = sa.MetaData(bind=self.engine) # excised schema=schema to prevent errors
+            meta.reflect(schema=schema)
+            for tbl in meta.sorted_tables:
+                if args.tables and not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.tables):
+                    continue
+                if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.exclude_tables):
+                    continue
+                tbl.db = self
+                # TODO: Replace all these monkeypatches with an instance assigment
+                tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
+                tbl.random_row_func = types.MethodType(_random_row_func, tbl)
+                tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
+                tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
+                if not tbl.pk:
+                    tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name)]
+                tbl.filtered_by = types.MethodType(_filtered_by, tbl)
+                tbl.by_pk = types.MethodType(_by_pk, tbl)
+                tbl.pk_val = types.MethodType(_pk_val, tbl)
+                tbl.child_fks = []
+                estimate_rows = not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables)
+                tbl.find_n_rows(estimate=estimate_rows)
+                self.tables[(tbl.schema, tbl.name)] = tbl
+        all_constraints = args.config.get('constraints', {})
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
-            constraints = args.config.get('constraints', {}).get(tbl_name, [])
+            qualified = "{}.{}".format(tbl_schema, tbl_name)
+            if qualified in all_constraints:
+                constraints = all_constraints[qualified]
+            else:
+                constraints=all_constraints.get(tbl_name, [])
+            tbl.constraints = constraints
             for fk in (tbl.fks + constraints):
                 fk['constrained_schema'] = tbl_schema
                 fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
@@ -217,9 +251,10 @@ class Db(object):
             target.required = deque()
             target.pending = dict()
             target.done = set()
-            if any(fnmatch.fnmatch(tbl.name, each) 
-                   for each in self.args.full_tables):
+            target.fetch_all = False
+            if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables):
                 target.n_rows_desired = tbl.n_rows
+                target.fetch_all = True
             else:
                 if tbl.n_rows:
                     if self.args.logarithmic:
@@ -275,6 +310,26 @@ class Db(object):
                     if not target_parent_row:
                         source_parent_row = self.conn.execute(slct).first()
                         self.create_row_in(source_parent_row, target_db, target_parent)
+
+            # make sure that all referenced rows are in referenced table(s)
+            for constraint in target.constraints:
+                target_referred = target_db.tables[(constraint['referred_schema'], constraint['referred_table'])]
+                slct = sa.sql.select([target_referred,])
+                any_non_null_key_columns = False
+                for (referred_col, constrained_col) in zip(constraint['referred_columns'],
+                                                           constraint['constrained_columns']):
+                    slct = slct.where(target_referred.c[referred_col] ==
+                                      source_row[constrained_col])
+                    if source_row[constrained_col] is not None:
+                        any_non_null_key_columns = True
+                        break
+                if any_non_null_key_columns:
+                    target_referred_row = target_db.conn.execute(slct).first()
+                    if not target_referred_row:
+                        source_referred_row = self.conn.execute(slct).first()
+                        # because constraints aren't enforced like real FKs, the referred row isn't guaranteed to exist
+                        if source_referred_row:
+                            self.create_row_in(source_referred_row, target_db, target_referred)
 
             pks = tuple((source_row[key] for key in target.pk))
             target.pending[pks] = source_row
@@ -358,7 +413,7 @@ class Db(object):
         target_db.flush()
 
 
-def update_sequences(source, target):
+def update_sequences(source, target, tables, exclude_tables):
     """Set database sequence values to match the source db
 
        Needed to avoid subsequent unique key violations after DB build.
@@ -367,12 +422,19 @@ def update_sequences(source, target):
     if source.engine.name != 'postgresql' or target.engine.name != 'postgresql':
         return
     qry = """SELECT 'SELECT last_value FROM ' || n.nspname ||
-                     '.' || c.relname || ';' AS qry,
-                    n.nspname || '.' || c.relname AS qual_name
-             FROM   pg_namespace n
-             JOIN   pg_class c ON (n.oid = c.relnamespace)
-             WHERE  c.relkind = 'S'"""
-    for (qry, qual_name) in list(source.conn.execute(qry)):
+                     '.' || s.relname || ';' AS qry,
+                    n.nspname || '.' || s.relname AS qual_name,
+                    n.nspname AS schema, t.relname AS table
+             FROM pg_class s
+             JOIN pg_depend d ON (d.objid=s.oid AND d.classid='pg_class'::regclass AND d.refclassid='pg_class'::regclass)
+             JOIN pg_class t ON (t.oid=d.refobjid)
+             JOIN pg_namespace n ON (n.oid=t.relnamespace)
+             WHERE s.relkind='S' AND d.deptype='a'"""
+    for (qry, qual_name, schema, table) in list(source.conn.execute(qry)):
+        if tables and not _table_matches_any_pattern(schema, table, tables):
+            continue
+        if _table_matches_any_pattern(schema, table, exclude_tables):
+            continue
         (lastval, ) = source.conn.execute(qry).first()
         nextval = int(lastval) + 1
         updater = "ALTER SEQUENCE %s RESTART WITH %s;" % (qual_name, nextval)
@@ -418,11 +480,15 @@ argparser.add_argument('--schema', help='Non-default schema to include',
                        type=str, action='append', default=[])
 argparser.add_argument('--config', help='Path to configuration .json file',
                        type=argparse.FileType('r'))
-argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude',
+argparser.add_argument('--table', '-t', dest='tables', help='Include the named table(s) only',
+                       type=str, action='append', default=[])
+argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude. When both -t and -T are given, the behavior is to include just the tables that match at least one -t switch but no -T switches.',
                        type=str, action='append', default=[])
 argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to include every row of',
                        type=str, action='append', default=[])
 argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
+
+log_format="%(asctime)s %(levelname)-5s %(message)s"
 
 def generate():
     args = argparser.parse_args()
@@ -433,17 +499,17 @@ def generate():
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
+    logging.basicConfig(format=log_format)
     schemas = args.schema + [None,]
     args.config = json.load(args.config) if args.config else {}
-    for schema in schemas:
-        source = Db(args.source, args, schema=schema)
-        target = Db(args.dest, args, schema=schema)
-        if set(source.tables.keys()) != set(target.tables.keys()):
-            raise Exception('Source and target databases have different tables')
-        source.assign_target(target)
-        if source.confirm():
-            source.create_subset_in(target)
-    update_sequences(source, target)
+    source = Db(args.source, args, schemas)
+    target = Db(args.dest, args, schemas)
+    if set(source.tables.keys()) != set(target.tables.keys()):
+        raise Exception('Source and target databases have different tables')
+    source.assign_target(target)
+    if source.confirm():
+        source.create_subset_in(target)
+    update_sequences(source, target, args.tables, args.exclude_tables)
 
 if __name__ == '__main__':
     generate()

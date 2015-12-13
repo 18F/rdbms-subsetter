@@ -39,4 +39,15 @@
 * wildcards for `--exclude-table` (thanks jmcarp)
 * `--full-table` arg
 
+0.2.5 (2015-11-16)
+++++++++++++++++++
 
+* `--table` argument (birdonfire)
+* table-related arguments support schema prefixes (birdonfire)
+* Sequence updating now respects `--table` and `--exclude-table` (birdonfire)
+* Force float division in ``_completeness_score`` (birdonfire)
+* Add timestamp to log output (birdonfire)
+* Fetch parent rows required by configured constraints (birdonfire)
+* Respect cross-schema constraints (birdonfire)
+* Support qualified table names in constraint keys (birdonfire)
+* guarantee fetching 100% of `--full-table` tables (birdonfire)
