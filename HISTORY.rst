@@ -51,3 +51,5 @@
 * Respect cross-schema constraints (birdonfire)
 * Support qualified table names in constraint keys (birdonfire)
 * guarantee fetching 100% of `--full-table` tables (birdonfire)
+* allow disabling of write buffering (brki)
+* support event handlers (brki)

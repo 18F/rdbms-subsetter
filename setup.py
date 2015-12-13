@@ -25,6 +25,7 @@ setup(
     url='https://github.com/18f/https://github.com/18F/rdbms-subsetter',
     install_requires=[
       "sqlalchemy",
+      "blinker",
     ],
     license="CC0",
     keywords='database testing',
