@@ -55,3 +55,4 @@
 * support event handlers (brki)
 * packaging changed to wheel (jmcarp)
 * documentation bug cleanup (jmcarp)
+* use `coverage` (jmcarp)
