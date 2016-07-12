@@ -83,116 +83,162 @@ __version__ = '0.2.5'
 SIGNAL_ROW_ADDED = 'row_added'
 
 
-def _find_n_rows(self, estimate=False):
-    self.n_rows = 0
-    if estimate:
-        try:
-            if self.db.engine.driver in ('psycopg2',
-                                         'pg8000', ):
-                schema = (self.schema + '.') if self.schema else ''
-                qry = """SELECT reltuples FROM pg_class
-                         WHERE oid = lower('%s%s')::regclass""" % (
-                    schema, self.name.lower())
-            elif 'oracle' in self.db.engine.driver:
-                qry = """SELECT num_rows FROM all_tables
-                         WHERE LOWER(table_name)='%s'""" % self.name.lower()
-            else:
-                raise NotImplementedError(
-                    "No approximation known for driver %s" %
-                    self.db.engine.driver)
-            self.n_rows = self.db.conn.execute(qry).fetchone()[0]
-        except Exception as e:
-            logging.debug("failed to get approximate rowcount for %s\n%s" %
-                          (self.name, str(e)))
-    if not self.n_rows:
-        self.n_rows = self.db.conn.execute(self.count()).fetchone()[0]
+class TableHelper(object):
+    "Provides self-evaulation functions for SQLAlchemy tables"
+
+    def __init__(self, table):
+        self.t = table
+
+    def find_n_rows(self, estimate=False):
+        n_rows = 0
+        if estimate:
+            try:
+                if self.t.db.engine.driver in ('psycopg2',
+                                             'pg8000', ):
+                    schema = (self.t.schema + '.') if self.t.schema else ''
+                    qry = """SELECT reltuples FROM pg_class
+                             WHERE oid = lower('%s%s')::regclass""" % (
+                        schema, self.t.name.lower())
+                elif 'oracle' in self.t.db.engine.driver:
+                    qry = """SELECT num_rows FROM all_tables
+                             WHERE LOWER(table_name)='%s'""" % self.name.lower()
+                else:
+                    raise NotImplementedError(
+                        "No approximation known for driver %s" %
+                        self.t.db.engine.driver)
+                n_rows = self.t.db.conn.execute(qry).fetchone()[0]
+            except Exception as e:
+                logging.debug("failed to get approximate rowcount for %s\n%s" %
+                              (self.t.name, str(e)))
+        if not n_rows:
+            n_rows = self.t.db.conn.execute(self.t.count()).fetchone()[0]
+        return n_rows
+
+    def random_row_func(self):
+        dialect = self.t.bind.engine.dialect.name
+        if 'mysql' in dialect:
+            return sa.sql.func.rand()
+        elif 'oracle' in dialect:
+            return sa.sql.func.dbms_random.value()
+        else:
+            return sa.sql.func.random()
 
 
-def _random_row_func(self):
-    dialect = self.bind.engine.dialect.name
-    if 'mysql' in dialect:
-        return sa.sql.func.rand()
-    elif 'oracle' in dialect:
-        return sa.sql.func.dbms_random.value()
-    else:
-        return sa.sql.func.random()
+    def random_rows(self):
+        """
+        Random sample from ``.t`` of *approximate* size ``t.n_rows_desired``
+        """
+        if self.t.n_rows:
+            while True:
+                n = self.t.target.n_rows_desired
+                if self.t.n_rows > 1000:
+                    fraction = n / float(self.t.n_rows)
+                    qry = sa.sql.select([self, ]).where(
+                        self.random_row_func() < fraction)
+                    results = self.t.db.conn.execute(qry).fetchall()
+                    # we may stop wanting rows at any point, so shuffle them so as not to
+                    # skew the sample toward those near the beginning
+                    random.shuffle(results)
+                    for row in results:
+                        yield row
+                else:
+                    qry = sa.sql.select(
+                        [self.t, ]).order_by(self.random_row_func()).limit(n)
+                    for row in self.t.db.conn.execute(qry):
+                        yield row
+
+    def next_row(self):
+        if self.t.target.required:
+            return self.t.target.required.popleft()
+        elif self.t.target.requested:
+            return self.t.target.requested.popleft()
+        else:
+            try:
+                return (next(self.random_rows()), False)  # not prioritized
+            except StopIteration:
+                return None
 
 
-def _random_row_gen_fn(self):
-    """
-    Random sample of *approximate* size n
-    """
-    if self.n_rows:
-        while True:
-            n = self.target.n_rows_desired
-            if self.n_rows > 1000:
-                fraction = n / float(self.n_rows)
-                qry = sa.sql.select([self, ]).where(
-                    self.random_row_func() < fraction)
-                results = self.db.conn.execute(qry).fetchall()
-                # we may stop wanting rows at any point, so shuffle them so as not to
-                # skew the sample toward those near the beginning
-                random.shuffle(results)
-                for row in results:
-                    yield row
-            else:
-                qry = sa.sql.select(
-                    [self, ]).order_by(self.random_row_func()).limit(n)
-                for row in self.db.conn.execute(qry):
-                    yield row
+    def filtered_by(self, **kw):
+        slct = sa.sql.select([self.t, ])
+        slct = slct.where(sa.sql.and_((self.t.c[k] == v) for (k, v) in kw.items()))
+        return slct
+
+    def by_pk(self, pk):
+        pk_name = self.t.db.inspector.get_primary_keys(self.t.name, self.t.schema)[0]
+        slct = self.filtered_by(**{pk_name: pk})
+        return self.t.db.conn.execute(slct).fetchone()
 
 
-def _next_row(self):
-    if self.target.required:
-        return self.target.required.popleft()
-    elif self.target.requested:
-        return self.target.requested.popleft()
-    else:
-        try:
-            return (next(self.random_rows), False)  # not prioritized
-        except StopIteration:
+    def pk_val(self, row):
+        if self.t.pk:
+            return row[self.t.pk[0]]
+        else:
             return None
 
+    def completeness_score(self):
+        """Scores how close a target table is to being filled enough to quit"""
+        table = (self.t.schema if self.t.schema else "") + self.t.name
+        fetch_all = self.t.fetch_all
+        requested = len(self.t.requested)
+        required = len(self.t.required)
+        n_rows = float(self.t.n_rows)
+        n_rows_desired = float(self.t.n_rows_desired)
+        logging.debug("%s.fetch_all      = %s", table, fetch_all)
+        logging.debug("%s.requested      = %d", table, requested)
+        logging.debug("%s.required       = %d", table, required)
+        logging.debug("%s.n_rows         = %d", table, n_rows)
+        logging.debug("%s.n_rows_desired = %d", table, n_rows_desired)
+        if fetch_all:
+            if n_rows < n_rows_desired:
+                return 1 + (n_rows or 1) - (n_rows_desired or 1)
+        result = 0 - (requested / (n_rows or 1)) - required
+        if not self.t.required:  # anything in `required` queue disqualifies
+            result += (n_rows / (n_rows_desired or 1))**0.33
+        return result
 
-def _filtered_by(self, **kw):
-    slct = sa.sql.select([self, ])
-    slct = slct.where(sa.sql.and_((self.c[k] == v) for (k, v) in kw.items()))
-    return slct
 
 
-def _pk_val(self, row):
-    if self.pk:
-        return row[self.pk[0]]
-    else:
-        return None
+
+    def assign_as_target_of(self, source_tbl):
+
+        for ((tbl_schema, tbl_name), tbl) in self.tables.items():
+            target = target_db.tables[(tbl_schema, tbl_name)]
+
+            self.t.requested = deque()
+            self.t.required = deque()
+            self.t.pending = dict()
+            self.t.done = set()
+            self.t.fetch_all = False
+            self.t.source = source_tbl
+            source_tbl.target = self.t
+            self.t.n_rows_desired = self.determine_rows_desired(source_tbl, self.t.args)
+            logging.debug("assigned methods to %s" % self.t.name)
 
 
-def _by_pk(self, pk):
-    pk_name = self.db.inspector.get_primary_keys(self.name, self.schema)[0]
-    slct = self.filtered_by(**{pk_name: pk})
-    return self.db.conn.execute(slct).fetchone()
+            if _table_matches_any_pattern(tbl.schema, tbl.name,
+                                          self.args.full_tables):
+                target.n_rows_desired = tbl.n_rows
+                target.fetch_all = True
+            else:
+                if tbl.n_rows:
+                    if self.args.logarithmic:
+                        target.n_rows_desired = int(math.pow(10, math.log10(
+                            tbl.n_rows) * self.args.fraction)) or 1
+                    else:
+                        target.n_rows_desired = int(tbl.n_rows *
+                                                    self.args.fraction) or 1
+                else:
+                    target.n_rows_desired = 0
+            logging.debug("assigned methods to %s" % target.name)
 
 
-def _completeness_score(self):
-    """Scores how close a target table is to being filled enough to quit"""
-    table = (self.schema if self.schema else "") + self.name
-    fetch_all = self.fetch_all
-    requested = len(self.requested)
-    required = len(self.required)
-    n_rows = float(self.n_rows)
-    n_rows_desired = float(self.n_rows_desired)
-    logging.debug("%s.fetch_all      = %s", table, fetch_all)
-    logging.debug("%s.requested      = %d", table, requested)
-    logging.debug("%s.required       = %d", table, required)
-    logging.debug("%s.n_rows         = %d", table, n_rows)
-    logging.debug("%s.n_rows_desired = %d", table, n_rows_desired)
-    if fetch_all:
-        if n_rows < n_rows_desired:
-            return 1 + (n_rows or 1) - (n_rows_desired or 1)
-    result = 0 - (requested / (n_rows or 1)) - required
-    if not self.required:  # anything in `required` queue disqualifies
-        result += (n_rows / (n_rows_desired or 1))**0.33
-    return result
+
+
+
+
+
+
 
 
 def _table_matches_any_pattern(schema, table, patterns):
@@ -237,9 +283,7 @@ class Db(object):
                                               self.args.exclude_tables):
                     continue
                 tbl.db = self
-                # TODO: Replace all these monkeypatches with an instance assigment
-                tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
-                tbl.random_row_func = types.MethodType(_random_row_func, tbl)
+                tbl.h = TableHelper(tbl)
                 tbl.fks = self.inspector.get_foreign_keys(tbl.name,
                                                           schema=tbl.schema)
                 tbl.pk = self.inspector.get_primary_keys(tbl.name,
@@ -247,13 +291,10 @@ class Db(object):
                 if not tbl.pk:
                     tbl.pk = [d['name']
                               for d in self.inspector.get_columns(tbl.name)]
-                tbl.filtered_by = types.MethodType(_filtered_by, tbl)
-                tbl.by_pk = types.MethodType(_by_pk, tbl)
-                tbl.pk_val = types.MethodType(_pk_val, tbl)
                 tbl.child_fks = []
                 estimate_rows = not _table_matches_any_pattern(
                     tbl.schema, tbl.name, self.args.full_tables)
-                tbl.find_n_rows(estimate=estimate_rows)
+                tbl.n_rows = tbl.h.find_n_rows(estimate=estimate_rows)
                 self.tables[(tbl.schema, tbl.name)] = tbl
         all_constraints = args.config.get('constraints', {})
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
@@ -273,10 +314,9 @@ class Db(object):
         return "Db('%s')" % self.sqla_conn
 
     def assign_target(self, target_db):
+
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
-            tbl._random_row_gen_fn = types.MethodType(_random_row_gen_fn, tbl)
-            tbl.random_rows = tbl._random_row_gen_fn()
-            tbl.next_row = types.MethodType(_next_row, tbl)
+            tbl.random_rows = tbl.h.random_rows()
             target = target_db.tables[(tbl_schema, tbl_name)]
             target.requested = deque()
             target.required = deque()
@@ -299,8 +339,6 @@ class Db(object):
                     target.n_rows_desired = 0
             target.source = tbl
             tbl.target = target
-            target.completeness_score = types.MethodType(_completeness_score,
-                                                         target)
             logging.debug("assigned methods to %s" % target.name)
 
     def confirm(self):
@@ -318,7 +356,7 @@ class Db(object):
 
     def create_row_in(self, source_row, target_db, target, prioritized=False):
         logging.debug('create_row_in %s:%s ' %
-                      (target.name, target.pk_val(source_row)))
+                      (target.name, target.h.pk_val(source_row)))
 
         pks = tuple((source_row[key] for key in target.pk))
         row_exists = pks in target.pending or pks in target.done
@@ -429,7 +467,7 @@ class Db(object):
                 tbl_schema = None
             source = self.tables[(tbl_schema, tbl_name)]
             for pk in pks:
-                source_row = source.by_pk(pk)
+                source_row = source.h.by_pk(pk)
                 if source_row:
                     self.create_row_in(source_row,
                                        target_db,
@@ -439,10 +477,9 @@ class Db(object):
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
 
-        #import pdb; pdb.set_trace()
         while True:
             targets = sorted(target_db.tables.values(),
-                             key=lambda t: t.completeness_score())
+                             key=lambda t: t.h.completeness_score())
             try:
                 target = targets.pop(0)
                 while not target.source.n_rows:
@@ -455,10 +492,10 @@ class Db(object):
                           ", ".join(t.name for t in target_db.tables.values()
                                     if not t.n_rows))
             logging.info("lowest completeness score (in %s) at %f" %
-                         (target.name, target.completeness_score()))
-            if target.completeness_score() > 0.97:
+                         (target.name, target.h.completeness_score()))
+            if target.h.completeness_score() > 0.97:
                 break
-            (source_row, prioritized) = target.source.next_row()
+            (source_row, prioritized) = target.source.h.next_row()
             self.create_row_in(source_row,
                                target_db,
                                target,
@@ -607,16 +644,20 @@ argparser.add_argument('-y',
 
 log_format = "%(asctime)s %(levelname)-5s %(message)s"
 
-
-def generate():
-    args = argparser.parse_args()
-    _import_modules(args.import_list)
-    args.force_rows = {}
+def _parse_force(args):
+    "Collects ``args.force`` into {table name: [pk values to force]}"
+    force_rows = {}
     for force_row in (args.force or []):
         (table_name, pk) = force_row.split(':')
         if table_name not in args.force_rows:
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
+    return force_rows
+
+def generate():
+    args = argparser.parse_args()
+    _import_modules(args.import_list)
+    args.force_rows = _parse_force(args)
     logging.getLogger().setLevel(args.loglevel)
     logging.basicConfig(format=log_format)
     schemas = args.schema + [None, ]
