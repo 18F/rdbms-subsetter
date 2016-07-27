@@ -93,15 +93,15 @@ class TableHelper(object):
         n_rows = 0
         if estimate:
             try:
-                if self.t.db.engine.driver in ('psycopg2',
-                                             'pg8000', ):
+                if self.t.db.engine.driver in ('psycopg2', 'pg8000', ):
                     schema = (self.t.schema + '.') if self.t.schema else ''
                     qry = """SELECT reltuples FROM pg_class
                              WHERE oid = lower('%s%s')::regclass""" % (
                         schema, self.t.name.lower())
                 elif 'oracle' in self.t.db.engine.driver:
                     qry = """SELECT num_rows FROM all_tables
-                             WHERE LOWER(table_name)='%s'""" % self.name.lower()
+                             WHERE LOWER(table_name)='%s'""" % self.name.lower(
+                    )
                 else:
                     raise NotImplementedError(
                         "No approximation known for driver %s" %
@@ -123,7 +123,6 @@ class TableHelper(object):
         else:
             return sa.sql.func.random()
 
-
     def random_rows(self):
         """
         Random sample from ``.t`` of *approximate* size ``t.n_rows_desired``
@@ -142,12 +141,18 @@ class TableHelper(object):
                     for row in results:
                         yield row
                 else:
-                    qry = sa.sql.select(
-                        [self.t, ]).order_by(self.random_row_func()).limit(n)
+                    qry = sa.sql.select([self.t, ]).order_by(
+                        self.random_row_func()).limit(n)
                     for row in self.t.db.conn.execute(qry):
                         yield row
 
     def next_row(self):
+        """
+        Returns (`row`, `prioritized`)
+
+        where `row` from this table, beginning with those required,
+        then requested, then randomly requested.
+        """
         if self.t.target.required:
             return self.t.target.required.popleft()
         elif self.t.target.requested:
@@ -156,19 +161,19 @@ class TableHelper(object):
             try:
                 return (next(self.random_rows()), False)  # not prioritized
             except StopIteration:
-                return None
-
+                return (None, None)
 
     def filtered_by(self, **kw):
         slct = sa.sql.select([self.t, ])
-        slct = slct.where(sa.sql.and_((self.t.c[k] == v) for (k, v) in kw.items()))
+        slct = slct.where(sa.sql.and_((self.t.c[k] == v) for (k, v) in
+                                      kw.items()))
         return slct
 
     def by_pk(self, pk):
-        pk_name = self.t.db.inspector.get_primary_keys(self.t.name, self.t.schema)[0]
+        pk_name = self.t.db.inspector.get_primary_keys(self.t.name,
+                                                       self.t.schema)[0]
         slct = self.filtered_by(**{pk_name: pk})
         return self.t.db.conn.execute(slct).fetchone()
-
 
     def pk_val(self, row):
         if self.t.pk:
@@ -197,9 +202,6 @@ class TableHelper(object):
             result += (n_rows / (n_rows_desired or 1))**0.33
         return result
 
-
-
-
     def assign_as_target_of(self, source_tbl):
 
         for ((tbl_schema, tbl_name), tbl) in self.tables.items():
@@ -212,9 +214,9 @@ class TableHelper(object):
             self.t.fetch_all = False
             self.t.source = source_tbl
             source_tbl.target = self.t
-            self.t.n_rows_desired = self.determine_rows_desired(source_tbl, self.t.args)
+            self.t.n_rows_desired = self.determine_rows_desired(source_tbl,
+                                                                self.t.args)
             logging.debug("assigned methods to %s" % self.t.name)
-
 
             if _table_matches_any_pattern(tbl.schema, tbl.name,
                                           self.args.full_tables):
@@ -231,14 +233,6 @@ class TableHelper(object):
                 else:
                     target.n_rows_desired = 0
             logging.debug("assigned methods to %s" % target.name)
-
-
-
-
-
-
-
-
 
 
 def _table_matches_any_pattern(schema, table, patterns):
@@ -307,8 +301,8 @@ class Db(object):
             for fk in (tbl.fks + constraints):
                 fk['constrained_schema'] = tbl_schema
                 fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
-                self.tables[(fk['referred_schema'],
-                             fk['referred_table'])].child_fks.append(fk)
+                self.tables[(fk['referred_schema'], fk['referred_table']
+                             )].child_fks.append(fk)
 
     def __repr__(self):
         return "Db('%s')" % self.sqla_conn
@@ -367,8 +361,8 @@ class Db(object):
         if not row_exists:
             # make sure that all required rows are in parent table(s)
             for fk in target.fks:
-                target_parent = target_db.tables[(fk['referred_schema'],
-                                                  fk['referred_table'])]
+                target_parent = target_db.tables[(fk['referred_schema'], fk[
+                    'referred_table'])]
                 slct = sa.sql.select([target_parent, ])
                 any_non_null_key_columns = False
                 for (parent_col, child_col) in zip(fk['referred_columns'],
@@ -387,9 +381,8 @@ class Db(object):
 
             # make sure that all referenced rows are in referenced table(s)
             for constraint in target.constraints:
-                target_referred = target_db.tables[(
-                    constraint['referred_schema'],
-                    constraint['referred_table'])]
+                target_referred = target_db.tables[(constraint[
+                    'referred_schema'], constraint['referred_table'])]
                 slct = sa.sql.select([target_referred, ])
                 any_non_null_key_columns = False
                 for (referred_col, constrained_col) in zip(
@@ -423,8 +416,8 @@ class Db(object):
                                           prioritized=prioritized)
 
         for child_fk in target.child_fks:
-            child = self.tables[(child_fk['constrained_schema'],
-                                 child_fk['constrained_table'])]
+            child = self.tables[(child_fk['constrained_schema'], child_fk[
+                'constrained_table'])]
             slct = sa.sql.select([child])
             for (child_col, this_col) in zip(child_fk['constrained_columns'],
                                              child_fk['referred_columns']):
@@ -435,8 +428,8 @@ class Db(object):
                 if prioritized:
                     child.target.required.append((desired_row, prioritized))
                 elif (n == 0):
-                    child.target.requested.appendleft(
-                        (desired_row, prioritized))
+                    child.target.requested.appendleft((desired_row, prioritized
+                                                       ))
                 else:
                     child.target.requested.append((desired_row, prioritized))
 
@@ -486,8 +479,8 @@ class Db(object):
                     target = targets.pop(0)
             except IndexError:  # pop failure, no more tables
                 break
-            logging.debug("total n_rows in target: %d" % sum(
-                (t.n_rows for t in target_db.tables.values())))
+            logging.debug("total n_rows in target: %d" %
+                          sum((t.n_rows for t in target_db.tables.values())))
             logging.debug("target tables with 0 n_rows: %s" %
                           ", ".join(t.name for t in target_db.tables.values()
                                     if not t.n_rows))
@@ -644,6 +637,7 @@ argparser.add_argument('-y',
 
 log_format = "%(asctime)s %(levelname)-5s %(message)s"
 
+
 def _parse_force(args):
     "Collects ``args.force`` into {table name: [pk values to force]}"
     force_rows = {}
@@ -653,6 +647,7 @@ def _parse_force(args):
             args.force_rows[table_name] = []
         args.force_rows[table_name].append(pk)
     return force_rows
+
 
 def generate():
     args = argparser.parse_args()
