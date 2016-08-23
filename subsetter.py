@@ -132,7 +132,7 @@ class TableHelper(object):
                 n = self.t.target.n_rows_desired
                 if self.t.n_rows > 1000:
                     fraction = n / float(self.t.n_rows)
-                    qry = sa.sql.select([self, ]).where(
+                    qry = sa.sql.select([self.t, ]).where(
                         self.random_row_func() < fraction)
                     results = self.t.db.conn.execute(qry).fetchall()
                     # we may stop wanting rows at any point, so shuffle them so as not to
@@ -643,9 +643,9 @@ def _parse_force(args):
     force_rows = {}
     for force_row in (args.force or []):
         (table_name, pk) = force_row.split(':')
-        if table_name not in args.force_rows:
-            args.force_rows[table_name] = []
-        args.force_rows[table_name].append(pk)
+        if table_name not in force_rows:
+            force_rows[table_name] = []
+        force_rows[table_name].append(pk)
     return force_rows
 
 
