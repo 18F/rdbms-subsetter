@@ -77,7 +77,7 @@ try:
 except NameError:
     pass
 
-__version__ = '0.2.5'
+__version__ = '0.2.6'
 
 SIGNAL_ROW_ADDED = 'row_added'
 
@@ -104,7 +104,7 @@ def _find_n_rows(self, estimate=False):
 
 def _random_row_func(self):
     dialect = self.bind.engine.dialect.name
-    if 'mysql' in dialect:
+    if 'mysql' in dialect or 'mssql' in dialect:
         return sa.sql.func.rand()
     elif 'oracle' in dialect:
         return sa.sql.func.dbms_random.value()

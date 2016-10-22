@@ -56,3 +56,9 @@
 * packaging changed to wheel (jmcarp)
 * documentation bug cleanup (jmcarp)
 * use `coverage` (jmcarp)
+
+0.2.6
++++++
+
+* Correct random row choice for MSSQL (Joe Francis)
+
