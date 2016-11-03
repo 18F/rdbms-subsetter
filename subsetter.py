@@ -78,6 +78,12 @@ try:
 except NameError:
     pass
 
+try:
+    from psycopg2 import IntegrityError
+except ImportError:
+    class IntegrityError(Exception):
+        "Dummy exception type, placeholder for missing PostgreSQL-specific error"
+    
 __version__ = '0.2.5'
 
 SIGNAL_ROW_ADDED = 'row_added'
@@ -284,7 +290,8 @@ class Db(object):
                                                          schema=tbl.schema)
                 if not tbl.pk:
                     tbl.pk = [d['name']
-                              for d in self.inspector.get_columns(tbl.name)]
+                              for d in self.inspector.get_columns(tbl.name,
+                                                                  schema=tbl.schema)]
                 tbl.child_fks = []
                 estimate_rows = not _table_matches_any_pattern(
                     tbl.schema, tbl.name, self.args.full_tables)
@@ -447,7 +454,21 @@ class Db(object):
         for table in self.tables.values():
             if not table.pending:
                 continue
-            self.conn.execute(table.insert(), list(table.pending.values()))
+            try:
+                self.conn.execute(table.insert(), list(table.pending.values()))
+            except Exception as e:
+                # We are supposed to avoid trying to create existing rows,
+                # but an undiagnosed bug lets one through occasionally.
+                # As a stopgap, ignoring the existing row is correct.
+                # TODO: this must presumably be patched for non-pg RDBMS, too
+                # rollback?
+                for vals in table.pending.values():
+                    try:
+                        self.conn.execute(table.insert(), vals)
+                    except Exception as e2:
+                        logging.warning('Problem inserting row: {}'.format(str(e2)))
+                        logging.warning('For row {}'.format(str(vals))) 
+                        logging.warning('Skipping insert')
             table.done = table.done.union(table.pending.keys())
             table.pending = dict()
 
