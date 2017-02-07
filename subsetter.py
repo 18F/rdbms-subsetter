@@ -224,7 +224,7 @@ class Db(object):
                 tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
                 tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
                 if not tbl.pk:
-                    tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name)]
+                    tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name, schema=tbl.schema)]
                 tbl.filtered_by = types.MethodType(_filtered_by, tbl)
                 tbl.by_pk = types.MethodType(_by_pk, tbl)
                 tbl.pk_val = types.MethodType(_pk_val, tbl)
@@ -431,7 +431,7 @@ class Db(object):
             target_db.flush()
 
 
-def update_sequences(source, target, tables, exclude_tables):
+def update_sequences(source, target, schemas, tables, exclude_tables):
     """Set database sequence values to match the source db
 
        Needed to avoid subsequent unique key violations after DB build.
@@ -449,6 +449,8 @@ def update_sequences(source, target, tables, exclude_tables):
              JOIN pg_namespace n ON (n.oid=t.relnamespace)
              WHERE s.relkind='S' AND d.deptype='a'"""
     for (qry, qual_name, schema, table) in list(source.conn.execute(qry)):
+        if schema not in schemas:
+            continue
         if tables and not _table_matches_any_pattern(schema, table, tables):
             continue
         if _table_matches_any_pattern(schema, table, exclude_tables):
@@ -522,7 +524,7 @@ def generate():
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
     logging.basicConfig(format=log_format)
-    schemas = args.schema + [None,]
+    schemas = args.schema + [None, ]
     args.config = json.load(args.config) if args.config else {}
     source = Db(args.source, args, schemas)
     target = Db(args.dest, args, schemas)
@@ -531,7 +533,7 @@ def generate():
     source.assign_target(target)
     if source.confirm():
         source.create_subset_in(target)
-    update_sequences(source, target, args.tables, args.exclude_tables)
+    update_sequences(source, target, schemas, args.tables, args.exclude_tables)
 
 if __name__ == '__main__':
     generate()

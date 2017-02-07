@@ -57,8 +57,8 @@
 * documentation bug cleanup (jmcarp)
 * use `coverage` (jmcarp)
 
-0.2.6
-+++++
+0.2.6 (unreleased)
+++++++++++++++++++
 
 * Correct random row choice for MSSQL (Joe Francis)
-
+* Adjust sequences only for specified schemas (R Vrajmohan)
