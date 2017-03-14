@@ -513,6 +513,10 @@ argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirm
 
 log_format="%(asctime)s %(levelname)-5s %(message)s"
 
+def merge_config_args(args):
+    args.tables.extend(args.config.get("tables", []))
+    args.schema.extend(args.config.get("schemas", []))
+
 def generate():
     args = argparser.parse_args()
     _import_modules(args.import_list)
@@ -524,8 +528,9 @@ def generate():
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
     logging.basicConfig(format=log_format)
-    schemas = args.schema + [None, ]
     args.config = json.load(args.config) if args.config else {}
+    merge_config_args(args)
+    schemas = args.schema + [None, ]
     source = Db(args.source, args, schemas)
     target = Db(args.dest, args, schemas)
     if set(source.tables.keys()) != set(target.tables.keys()):

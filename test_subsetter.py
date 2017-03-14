@@ -2,18 +2,20 @@ import os
 import unittest
 import tempfile
 import sqlite3
-from subsetter import Db
+from subsetter import Db, merge_config_args
 
 class DummyArgs(object):
-    logarithmic = False
-    fraction = 0.25
-    force_rows = {}
-    children = 25
-    config = {}
-    tables = []
-    exclude_tables = []
-    full_tables = []
-    buffer = 1000
+    def __init__(self):
+        self.logarithmic = False
+        self.fraction = 0.25
+        self.force_rows = {}
+        self.children = 25
+        self.config = {}
+        self.tables = []
+        self.schema = []
+        self.exclude_tables = []
+        self.full_tables = []
+        self.buffer = 1000
 
 dummy_args = DummyArgs()
 
@@ -148,3 +150,21 @@ class OverallTest(unittest.TestCase):
         self.assertEqual(len(zeppelins), 0)
         zeppos = self.dest_db.execute("SELECT * FROM zeppos").fetchall()
         self.assertEqual(len(zeppos), 0)
+
+class MergeConfigArgsTest(unittest.TestCase):
+    def test_merges_tables_from_config_file(self):
+        args = DummyArgs()
+        args.tables = ["zeppelins"]
+        args.config["tables"] = [ "zeppos" ]
+
+        merge_config_args(args)
+
+        self.assertEqual(args.tables, ["zeppelins", "zeppos"])
+
+    def test_merges_schemas_from_config_file(self):
+        args = DummyArgs()
+        args.schema = ["schema1"]
+        args.config["schemas"] = [ "schema2" ]
+
+        merge_config_args(args)
+        self.assertEqual(args.schema, ["schema1", "schema2"])
