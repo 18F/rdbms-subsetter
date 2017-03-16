@@ -100,7 +100,9 @@ in JSON.  For example,
             "constrained_columns": ["(constrained col 1 in child)", "(constrained col 2 in child)",],
           }
         ],
-      }
+      },
+      "tables": [ "SCHEMA1.TABLE1", "SCHEMA2.TABLE2" ],
+      "schemas": [ "SCHEMA1", "SCHEMA2" ]
     }
 
 Optionally, you can qualify ``child_table_name``, i.e.
@@ -108,6 +110,13 @@ Optionally, you can qualify ``child_table_name``, i.e.
 
 ``rdbms-subsetter`` treats these constraints like real foreign keys and fetches
 parent and child rows as described above.
+
+``tables`` and ``schemas`` are optional.
+
+``tables`` are merged with the ``--table`` elements passed on commandline.
+
+``schemas`` are merged with the ``--schema`` elements passed on commandline.
+
 
 Signal handlers
 ---------------
