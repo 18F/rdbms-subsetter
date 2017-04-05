@@ -516,6 +516,7 @@ log_format="%(asctime)s %(levelname)-5s %(message)s"
 def merge_config_args(args):
     args.tables.extend(args.config.get("tables", []))
     args.schema.extend(args.config.get("schemas", []))
+    args.full_tables.extend(args.config.get("full_tables", []))
 
 def generate():
     args = argparser.parse_args()
@@ -528,6 +529,7 @@ def generate():
         args.force_rows[table_name].append(pk)
     logging.getLogger().setLevel(args.loglevel)
     logging.basicConfig(format=log_format)
+
     args.config = json.load(args.config) if args.config else {}
     merge_config_args(args)
     schemas = args.schema + [None, ]
