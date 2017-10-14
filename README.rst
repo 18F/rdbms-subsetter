@@ -1,12 +1,26 @@
 rdbms-subsetter
 ===============
 
-.. image:: https://travis-ci.org/18F/rdbms-subsetter.svg?branch=master
-   :target: https://travis-ci.org/18F/rdbms-subsetter
+.. image:: https://img.shields.io/pypi/v/rdbms-subsetter.svg
+   :target: https://pypi.python.org/pypi/rdbms-subsetter
+   :alt: PyPI status
 
-.. image:: https://codecov.io/github/18F/rdbms-subsetter/coverage.svg?branch=master
-    :target: https://codecov.io/github/18F/rdbms-subsetter?branch=master
+.. image:: https://circleci.com/gh/18F/rdbms-subsetter.svg?style=svg
+   :target: https://circleci.com/gh/18F/rdbms-subsetter
+   :alt: CircleCI status
 
+.. image:: https://codeclimate.com/github/18F/rdbms-subsetter/badges/gpa.svg
+   :target: https://codeclimate.com/github/18F/rdbms-subsetter
+   :alt: CodeClimate
+
+.. image:: https://codeclimate.com/github/18F/rdbms-subsetter/badges/coverage.svg 
+   :target: https://codeclimate.com/github/18F/rdbms-subsetter/coverage
+   :alt: Test coverage
+
+.. image:: https://gemnasium.com/badges/github.com/18F/rdbms-subsetter.svg
+   :target: https://gemnasium.com/github.com/18F/rdbms-subsetter
+   :alt: Gemnasium
+ 
 Generate a random sample of rows from a relational database that preserves
 referential integrity - so long as constraints are defined, all parent rows
 will exist for child rows.
