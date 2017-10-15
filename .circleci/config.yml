@@ -8,8 +8,11 @@ jobs:
     docker:
       # specify the version you desire here
       # use `-browsers` prefix for selenium tests, e.g. `3.6.1-browsers`
+      # CC_TEST_REPORTER_ID not a secret, safe to expose
       - image: circleci/python:3.6.1
-      
+        environment:
+          CC_TEST_REPORTER_ID: 3b8e3c639b920772d86b3a083b71f2f5caa7ed2d137e881150d02748e3ffad2f
+
       # Specify service dependencies here if necessary
       # CircleCI maintains a library of pre-built images
       # documented at https://circleci.com/docs/2.0/circleci-images/
@@ -39,18 +42,30 @@ jobs:
           paths:
             - ./venv
           key: v1-dependencies-{{ checksum "requirements.txt" }}
-        
+
       # run tests!
+
+      - run:
+          name: prepare coverage reporter
+          command: |
+            curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
+            chmod +x ./cc-test-reporter
+            ./cc-test-reporter before-build
+
       - run:
           name: run tests
           command: |
             . venv/bin/activate
-            py.test
+            py.test --cov --cov-report=xml
 
 
       - store_artifacts:
           path: test-reports
           destination: test-reports
-          
+
+      - run:
+          name: report coverage
+          command: |
+            ./cc-test-reporter after-build -t coverage.py --exit-code $?
 
 

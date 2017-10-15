@@ -5,3 +5,4 @@ wheel
 # Testing
 coverage
 pytest
+pytest-cov
