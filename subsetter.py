@@ -58,17 +58,18 @@ supported).
 Case-specific table names will probably create bad results in rdbms-subsetter,
 and in the rest of your life, for that matter.  Don't do it.
 """
-import json
-import fnmatch
 import argparse
+import fnmatch
 import functools
+import json
 import logging
-from collections import OrderedDict, deque
 import math
 import random
 import types
-from blinker import signal
+from collections import OrderedDict, deque
+
 import sqlalchemy as sa
+from blinker import signal
 from sqlalchemy.engine.reflection import Inspector
 
 # Python2 has a totally different definition for ``input``; overriding it here
@@ -81,26 +82,30 @@ __version__ = '0.2.6'
 
 SIGNAL_ROW_ADDED = 'row_added'
 
+
 def _find_n_rows(self, estimate=False):
     self.n_rows = 0
     if estimate:
         try:
-            if self.db.engine.driver in ('psycopg2', 'pg8000',):
+            if self.db.engine.driver in ('psycopg2', 'pg8000', ):
                 schema = (self.schema + '.') if self.schema else ''
                 qry = """SELECT reltuples FROM pg_class
-                         WHERE oid = lower('%s%s')::regclass""" % (schema, self.name.lower())
+                         WHERE oid = lower('%s%s')::regclass""" % (
+                    schema, self.name.lower())
             elif 'oracle' in self.db.engine.driver:
                 qry = """SELECT num_rows FROM all_tables
                          WHERE LOWER(table_name)='%s'""" % self.name.lower()
             else:
-                raise NotImplementedError("No approximation known for driver %s"
-                                          % self.db.engine.driver)
+                raise NotImplementedError(
+                    "No approximation known for driver %s" %
+                    self.db.engine.driver)
             self.n_rows = self.db.conn.execute(qry).fetchone()[0]
         except Exception as e:
             logging.debug("failed to get approximate rowcount for %s\n%s" %
                           (self.name, str(e)))
     if not self.n_rows:
         self.n_rows = self.db.conn.execute(self.count()).fetchone()[0]
+
 
 def _random_row_func(self):
     dialect = self.bind.engine.dialect.name
@@ -111,6 +116,7 @@ def _random_row_func(self):
     else:
         return sa.sql.func.random()
 
+
 def _random_row_gen_fn(self):
     """
     Random sample of *approximate* size n
@@ -120,7 +126,8 @@ def _random_row_gen_fn(self):
             n = self.target.n_rows_desired
             if self.n_rows > 1000:
                 fraction = n / float(self.n_rows)
-                qry = sa.sql.select([self,]).where(self.random_row_func() < fraction)
+                qry = sa.sql.select([self, ]).where(self.random_row_func() <
+                                                    fraction)
                 results = self.db.conn.execute(qry).fetchall()
                 # we may stop wanting rows at any point, so shuffle them so as not to
                 # skew the sample toward those near the beginning
@@ -128,9 +135,11 @@ def _random_row_gen_fn(self):
                 for row in results:
                     yield row
             else:
-                qry = sa.sql.select([self,]).order_by(self.random_row_func()).limit(n)
+                qry = sa.sql.select([self, ]).order_by(self.random_row_func(
+                )).limit(n)
                 for row in self.db.conn.execute(qry):
                     yield row
+
 
 def _next_row(self):
     if self.target.required:
@@ -139,14 +148,16 @@ def _next_row(self):
         return self.target.requested.popleft()
     else:
         try:
-            return (next(self.random_rows), False) # not prioritized
+            return (next(self.random_rows), False)  # not prioritized
         except StopIteration:
             return None
 
+
 def _filtered_by(self, **kw):
-    slct = sa.sql.select([self,])
+    slct = sa.sql.select([self, ])
     slct = slct.where(sa.sql.and_((self.c[k] == v) for (k, v) in kw.items()))
     return slct
+
 
 def _pk_val(self, row):
     if self.pk:
@@ -154,11 +165,12 @@ def _pk_val(self, row):
     else:
         return None
 
+
 def _by_pk(self, pk):
-    pk_name = self.db.inspector.get_primary_keys(self.name,
-                                                 self.schema)[0]
+    pk_name = self.db.inspector.get_primary_keys(self.name, self.schema)[0]
     slct = self.filtered_by(**{pk_name: pk})
     return self.db.conn.execute(slct).fetchone()
+
 
 def _completeness_score(self):
     """Scores how close a target table is to being filled enough to quit"""
@@ -181,6 +193,7 @@ def _completeness_score(self):
         result += (n_rows / (n_rows_desired or 1))**0.33
     return result
 
+
 def _table_matches_any_pattern(schema, table, patterns):
     """Test if the table `<schema>.<table>` matches any of the provided patterns.
 
@@ -192,14 +205,16 @@ def _table_matches_any_pattern(schema, table, patterns):
         - patterns.    The patterns to try.
     """
     qual_name = '{}.{}'.format(schema, table)
-    return any(fnmatch.fnmatch(qual_name, each) or fnmatch.fnmatch(table, each) for each in patterns)
+    return any(fnmatch.fnmatch(qual_name, each) or fnmatch.fnmatch(table, each)
+               for each in patterns)
+
 
 def _import_modules(import_list):
     for module_name in import_list:
         __import__(module_name)
 
-class Db(object):
 
+class Db(object):
     def __init__(self, sqla_conn, args, schemas=[None]):
         self.args = args
         self.sqla_conn = sqla_conn
@@ -210,26 +225,36 @@ class Db(object):
         self.tables = OrderedDict()
 
         for schema in self.schemas:
-            meta = sa.MetaData(bind=self.engine) # excised schema=schema to prevent errors
+            meta = sa.MetaData(bind=self.engine
+                               )  # excised schema=schema to prevent errors
             meta.reflect(schema=schema)
             for tbl in meta.sorted_tables:
-                if args.tables and not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.tables):
+                if args.tables and not _table_matches_any_pattern(
+                        tbl.schema, tbl.name, self.args.tables):
                     continue
-                if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.exclude_tables):
+                if _table_matches_any_pattern(tbl.schema, tbl.name,
+                                              self.args.exclude_tables):
                     continue
                 tbl.db = self
                 # TODO: Replace all these monkeypatches with an instance assigment
                 tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
                 tbl.random_row_func = types.MethodType(_random_row_func, tbl)
-                tbl.fks = self.inspector.get_foreign_keys(tbl.name, schema=tbl.schema)
-                tbl.pk = self.inspector.get_primary_keys(tbl.name, schema=tbl.schema)
+                tbl.fks = self.inspector.get_foreign_keys(tbl.name,
+                                                          schema=tbl.schema)
+                tbl.pk = self.inspector.get_primary_keys(tbl.name,
+                                                         schema=tbl.schema)
                 if not tbl.pk:
-                    tbl.pk = [d['name'] for d in self.inspector.get_columns(tbl.name, schema=tbl.schema)]
+                    tbl.pk = [
+                        d['name']
+                        for d in self.inspector.get_columns(tbl.name,
+                                                            schema=tbl.schema)
+                    ]
                 tbl.filtered_by = types.MethodType(_filtered_by, tbl)
                 tbl.by_pk = types.MethodType(_by_pk, tbl)
                 tbl.pk_val = types.MethodType(_pk_val, tbl)
                 tbl.child_fks = []
-                estimate_rows = not _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables)
+                estimate_rows = not _table_matches_any_pattern(
+                    tbl.schema, tbl.name, self.args.full_tables)
                 tbl.find_n_rows(estimate=estimate_rows)
                 self.tables[(tbl.schema, tbl.name)] = tbl
         all_constraints = args.config.get('constraints', {})
@@ -238,12 +263,13 @@ class Db(object):
             if qualified in all_constraints:
                 constraints = all_constraints[qualified]
             else:
-                constraints=all_constraints.get(tbl_name, [])
+                constraints = all_constraints.get(tbl_name, [])
             tbl.constraints = constraints
             for fk in (tbl.fks + constraints):
                 fk['constrained_schema'] = tbl_schema
                 fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
-                self.tables[(fk['referred_schema'], fk['referred_table'])].child_fks.append(fk)
+                self.tables[(fk['referred_schema'], fk['referred_table']
+                             )].child_fks.append(fk)
 
     def __repr__(self):
         return "Db('%s')" % self.sqla_conn
@@ -259,21 +285,24 @@ class Db(object):
             target.pending = dict()
             target.done = set()
             target.fetch_all = False
-            if _table_matches_any_pattern(tbl.schema, tbl.name, self.args.full_tables):
+            if _table_matches_any_pattern(tbl.schema, tbl.name,
+                                          self.args.full_tables):
                 target.n_rows_desired = tbl.n_rows
                 target.fetch_all = True
             else:
                 if tbl.n_rows:
                     if self.args.logarithmic:
-                        target.n_rows_desired = int(math.pow(10, math.log10(tbl.n_rows)
-                                                    * self.args.fraction)) or 1
+                        target.n_rows_desired = int(math.pow(10, math.log10(
+                            tbl.n_rows) * self.args.fraction)) or 1
                     else:
-                        target.n_rows_desired = int(tbl.n_rows * self.args.fraction) or 1
+                        target.n_rows_desired = int(tbl.n_rows *
+                                                    self.args.fraction) or 1
                 else:
                     target.n_rows_desired = 0
             target.source = tbl
             tbl.target = target
-            target.completeness_score = types.MethodType(_completeness_score, target)
+            target.completeness_score = types.MethodType(_completeness_score,
+                                                         target)
             logging.debug("assigned methods to %s" % target.name)
 
     def confirm(self):
@@ -302,8 +331,9 @@ class Db(object):
         if not row_exists:
             # make sure that all required rows are in parent table(s)
             for fk in target.fks:
-                target_parent = target_db.tables[(fk['referred_schema'], fk['referred_table'])]
-                slct = sa.sql.select([target_parent,])
+                target_parent = target_db.tables[(fk['referred_schema'], fk[
+                    'referred_table'])]
+                slct = sa.sql.select([target_parent, ])
                 any_non_null_key_columns = False
                 for (parent_col, child_col) in zip(fk['referred_columns'],
                                                    fk['constrained_columns']):
@@ -316,15 +346,18 @@ class Db(object):
                     target_parent_row = target_db.conn.execute(slct).first()
                     if not target_parent_row:
                         source_parent_row = self.conn.execute(slct).first()
-                        self.create_row_in(source_parent_row, target_db, target_parent)
+                        self.create_row_in(source_parent_row, target_db,
+                                           target_parent)
 
             # make sure that all referenced rows are in referenced table(s)
             for constraint in target.constraints:
-                target_referred = target_db.tables[(constraint['referred_schema'], constraint['referred_table'])]
-                slct = sa.sql.select([target_referred,])
+                target_referred = target_db.tables[(constraint[
+                    'referred_schema'], constraint['referred_table'])]
+                slct = sa.sql.select([target_referred, ])
                 any_non_null_key_columns = False
-                for (referred_col, constrained_col) in zip(constraint['referred_columns'],
-                                                           constraint['constrained_columns']):
+                for (referred_col, constrained_col) in zip(
+                        constraint['referred_columns'],
+                        constraint['constrained_columns']):
                     slct = slct.where(target_referred.c[referred_col] ==
                                       source_row[constrained_col])
                     if source_row[constrained_col] is not None:
@@ -336,7 +369,8 @@ class Db(object):
                         source_referred_row = self.conn.execute(slct).first()
                         # because constraints aren't enforced like real FKs, the referred row isn't guaranteed to exist
                         if source_referred_row:
-                            self.create_row_in(source_referred_row, target_db, target_referred)
+                            self.create_row_in(source_referred_row, target_db,
+                                               target_referred)
 
             pks = tuple((source_row[key] for key in target.pk))
             target.n_rows += 1
@@ -345,11 +379,15 @@ class Db(object):
                 target_db.insert_one(target, pks, source_row)
             else:
                 target.pending[pks] = source_row
-            signal(SIGNAL_ROW_ADDED).send(self, source_row=source_row, target_db=target_db, target_table=target,
+            signal(SIGNAL_ROW_ADDED).send(self,
+                                          source_row=source_row,
+                                          target_db=target_db,
+                                          target_table=target,
                                           prioritized=prioritized)
 
         for child_fk in target.child_fks:
-            child = self.tables[(child_fk['constrained_schema'], child_fk['constrained_table'])]
+            child = self.tables[(child_fk['constrained_schema'], child_fk[
+                'constrained_table'])]
             slct = sa.sql.select([child])
             for (child_col, this_col) in zip(child_fk['constrained_columns'],
                                              child_fk['referred_columns']):
@@ -360,7 +398,8 @@ class Db(object):
                 if prioritized:
                     child.target.required.append((desired_row, prioritized))
                 elif (n == 0):
-                    child.target.requested.appendleft((desired_row, prioritized))
+                    child.target.requested.appendleft((desired_row, prioritized
+                                                       ))
                 else:
                     child.target.requested.append((desired_row, prioritized))
 
@@ -368,9 +407,7 @@ class Db(object):
     def pending(self):
         return functools.reduce(
             lambda count, table: count + len(table.pending),
-            self.tables.values(),
-            0
-        )
+            self.tables.values(), 0)
 
     def insert_one(self, table, pk, values):
         self.conn.execute(table.insert(), values)
@@ -395,8 +432,10 @@ class Db(object):
             for pk in pks:
                 source_row = source.by_pk(pk)
                 if source_row:
-                    self.create_row_in(source_row, target_db,
-                                       source.target, prioritized=True)
+                    self.create_row_in(source_row,
+                                       target_db,
+                                       source.target,
+                                       prioritized=True)
                 else:
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
@@ -413,15 +452,16 @@ class Db(object):
                 break
             logging.debug("total n_rows in target: %d" %
                           sum((t.n_rows for t in target_db.tables.values())))
-            logging.debug("target tables with 0 n_rows: %s" %
-                          ", ".join(t.name for t in target_db.tables.values()
-                                    if not t.n_rows))
+            logging.debug("target tables with 0 n_rows: %s" % ", ".join(
+                t.name for t in target_db.tables.values() if not t.n_rows))
             logging.info("lowest completeness score (in %s) at %f" %
                          (target.name, target.completeness_score()))
             if target.completeness_score() > 0.97:
                 break
             (source_row, prioritized) = target.source.next_row()
-            self.create_row_in(source_row, target_db, target,
+            self.create_row_in(source_row,
+                               target_db,
+                               target,
                                prioritized=prioritized)
 
             if target_db.pending > self.args.buffer > 0:
@@ -448,6 +488,7 @@ def update_sequences(source, target, schemas, tables, exclude_tables):
              JOIN pg_class t ON (t.oid=d.refobjid)
              JOIN pg_namespace n ON (n.oid=t.relnamespace)
              WHERE s.relkind='S' AND d.deptype='a'"""
+
     for (qry, qual_name, schema, table) in list(source.conn.execute(qry)):
         if schema not in schemas:
             continue
@@ -466,9 +507,13 @@ def fraction(n):
     n = float(n)
     if 0 <= n <= 1:
         return n
-    raise argparse.ArgumentError('Fraction must be greater than 0 and no greater than 1')
+    raise argparse.ArgumentError(
+        'Fraction must be greater than 0 and no greater than 1')
+
 
 all_loglevels = "CRITICAL, FATAL, ERROR, DEBUG, INFO, WARN, WARNING"
+
+
 def loglevel(raw):
     try:
         return int(raw)
@@ -476,42 +521,97 @@ def loglevel(raw):
         upper = raw.upper()
         if upper in all_loglevels:
             return getattr(logging, upper)
-        raise NotImplementedError('log level "%s" not one of %s' % (raw, all_loglevels))
+        raise NotImplementedError('log level "%s" not one of %s' %
+                                  (raw, all_loglevels))
 
-argparser = argparse.ArgumentParser(description='Generate consistent subset of a database')
-argparser.add_argument('source', help='SQLAlchemy connection string for data origin',
+
+argparser = argparse.ArgumentParser(
+    description='Generate consistent subset of a database')
+argparser.add_argument('source',
+                       help='SQLAlchemy connection string for data origin',
                        type=str)
-argparser.add_argument('dest', help='SQLAlchemy connection string for data destination',
-                       type=str)
-argparser.add_argument('fraction', help='Proportion of rows to create in dest (0.0 to 1.0)',
-                       type=fraction)
-argparser.add_argument('-l', '--logarithmic', help='Cut row numbers logarithmically; try 0.5 for fraction',
-                       action='store_true')
-argparser.add_argument('-b', '--buffer', help='Number of records to store in buffer before flush; use 0 for no buffer',
-                       type=int, default=1000)
-argparser.add_argument('--loglevel', type=loglevel, help='log level (%s)' % all_loglevels,
+argparser.add_argument(
+    'dest',
+    help='SQLAlchemy connection string for data destination',
+    type=str)
+argparser.add_argument(
+    'fraction',
+    help='Proportion of rows to create in dest (0.0 to 1.0)',
+    type=fraction)
+argparser.add_argument(
+    '-l',
+    '--logarithmic',
+    help='Cut row numbers logarithmically; try 0.5 for fraction',
+    action='store_true')
+argparser.add_argument(
+    '-b',
+    '--buffer',
+    help=
+    'Number of records to store in buffer before flush; use 0 for no buffer',
+    type=int,
+    default=1000)
+argparser.add_argument('--loglevel',
+                       type=loglevel,
+                       help='log level (%s)' % all_loglevels,
                        default='INFO')
-argparser.add_argument('-f', '--force', help='<table name>:<primary_key_val> to force into dest',
-                       type=str.lower, action='append')
-argparser.add_argument('-c', '--children',
-                       help='Max number of child rows to attempt to pull for each parent row',
-                       type=int, default=3)
-argparser.add_argument('--schema', help='Non-default schema to include',
-                       type=str, action='append', default=[])
-argparser.add_argument('--config', help='Path to configuration .json file',
+argparser.add_argument(
+    '-f',
+    '--force',
+    help='<table name>:<primary_key_val> to force into dest',
+    type=str.lower,
+    action='append')
+argparser.add_argument(
+    '-c',
+    '--children',
+    help='Max number of child rows to attempt to pull for each parent row',
+    type=int,
+    default=3)
+argparser.add_argument('--schema',
+                       help='Non-default schema to include',
+                       type=str,
+                       action='append',
+                       default=[])
+argparser.add_argument('--config',
+                       help='Path to configuration .json file',
                        type=argparse.FileType('r'))
-argparser.add_argument('--table', '-t', dest='tables', help='Include the named table(s) only',
-                       type=str, action='append', default=[])
-argparser.add_argument('--exclude-table', '-T', dest='exclude_tables', help='Tables to exclude. When both -t and -T are given, the behavior is to include just the tables that match at least one -t switch but no -T switches.',
-                       type=str, action='append', default=[])
-argparser.add_argument('--full-table', '-F', dest='full_tables', help='Tables to include every row of',
-                       type=str, action='append', default=[])
-argparser.add_argument('--import', '-i', dest='import_list',
-                       help='Dotted module name to import; e.g. custom.signalhandler',
-                       type=str, action='append', default=[])
-argparser.add_argument('-y', '--yes', help='Proceed without stopping for confirmation', action='store_true')
+argparser.add_argument('--table',
+                       '-t',
+                       dest='tables',
+                       help='Include the named table(s) only',
+                       type=str,
+                       action='append',
+                       default=[])
+argparser.add_argument(
+    '--exclude-table',
+    '-T',
+    dest='exclude_tables',
+    help=
+    'Tables to exclude. When both -t and -T are given, the behavior is to include just the tables that match at least one -t switch but no -T switches.',
+    type=str,
+    action='append',
+    default=[])
+argparser.add_argument('--full-table',
+                       '-F',
+                       dest='full_tables',
+                       help='Tables to include every row of',
+                       type=str,
+                       action='append',
+                       default=[])
+argparser.add_argument(
+    '--import',
+    '-i',
+    dest='import_list',
+    help='Dotted module name to import; e.g. custom.signalhandler',
+    type=str,
+    action='append',
+    default=[])
+argparser.add_argument('-y',
+                       '--yes',
+                       help='Proceed without stopping for confirmation',
+                       action='store_true')
 
-log_format="%(asctime)s %(levelname)-5s %(message)s"
+log_format = "%(asctime)s %(levelname)-5s %(message)s"
+
 
 def generate():
     args = argparser.parse_args()
@@ -534,6 +634,7 @@ def generate():
     if source.confirm():
         source.create_subset_in(target)
     update_sequences(source, target, schemas, args.tables, args.exclude_tables)
+
 
 if __name__ == '__main__':
     generate()

@@ -6,3 +6,4 @@ wheel
 coverage
 pytest
 pytest-cov
+pytest_postgresql
