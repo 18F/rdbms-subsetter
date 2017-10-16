@@ -4,19 +4,11 @@
 
 import os
 import sqlite3
-import subprocess
 import tempfile
 
 import pytest
-import pytest_postgresql
 
 from subsetter import Db
-
-try:
-    subprocess.check_output('command -v pg_ctl', shell=True)
-    PG_CTL_MISSING = False  # sorry for the double-negative, but it's convenient later
-except subprocess.CalledProcessError:
-    PG_CTL_MISSING = True
 
 TABLE_DEFINITIONS = [
     "CREATE TABLE state (abbrev, name)",
@@ -49,15 +41,6 @@ class DummyArgs(object):
 dummy_args = DummyArgs()
 
 
-# @pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
-@pytest.mark.skip
-@pytest.fixture
-def pg_data(postgresql):
-    pytest.set_trace()
-    for table_def in TABLE_DEFINITIONS:
-        pass
-
-
 def temp_sqlite_db():
     """Creates a temporary sqlite database file
 
@@ -70,12 +53,6 @@ def temp_sqlite_db():
 
 def sqla_url(filename):
     return "sqlite:///%s" % filename
-
-
-def fetch_from(db, sql):
-    curs = db.cursor()
-    curs.execute(sql)
-    return curs.fetchall()
 
 
 def insert_data(curs):
