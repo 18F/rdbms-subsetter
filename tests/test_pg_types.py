@@ -54,6 +54,9 @@ def sqla_url(filename):
 TABLE_DEFINITIONS = [
     "CREATE TYPE mood AS ENUM ('grumpy', 'hungry', 'happy')",
     "CREATE TABLE cat (name text, current_mood mood)",
+    """CREATE TABLE moody_cat (name text,
+        current_mood mood,
+        possible_moods mood[])""",
 ]
 
 
@@ -63,6 +66,17 @@ def insert_data(curs):
                    ('Suzz', 'happy'),
                    ('Agamemnon', 'grumpy'), ):
         curs.execute("INSERT INTO cat VALUES (%s, %s)", params)
+    # array-of-enums throws error
+    # for params in (('Buzz', 'hungry', 'hungry', 'grumpy'),
+    #                ('Fuzz', 'happy', 'happy', 'hungry'),
+    #                ('Suzz', 'happy', 'happy', 'grumpy'),
+    #                ('Agamemnon', 'grumpy', 'hungry', 'grumpy'), ):
+    #     # param substitution syntax not working here -
+    #     # fallback to string templating
+    #     template = """INSERT INTO moody_cat VALUES ('%s', '%s',
+    #         ARRAY['%s'::mood, '%s'::mood])"""
+    #     query = template % params
+    #     curs.execute(query)
 
 
 @pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
@@ -89,9 +103,24 @@ def results(src_url, dest_url, arguments):
     return (src, dest)
 
 
+@pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
 def test_enum_type(pg_data):
+    args_with_scalar_enum = DummyArgs()
+    args_with_scalar_enum.tables = ['cat', ]
     (src, dest) = results(*pg_data, dummy_args)
     dest_curs = dest.conn.connection.cursor()
     dest_curs.execute("SELECT * FROM cat")
+    cats = dest_curs.fetchall()
+    assert len(cats) == 1
+
+
+@pytest.mark.skip  # https://github.com/18F/rdbms-subsetter/issues/22
+@pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
+def test_array_of_enums(pg_data):
+    args_with_array_enum = DummyArgs()
+    args_with_array_enum.tables = ['moody_cat', ]
+    (src, dest) = results(*pg_data, dummy_args)
+    dest_curs = dest.conn.connection.cursor()
+    dest_curs.execute("SELECT * FROM moody_cat")
     cats = dest_curs.fetchall()
     assert len(cats) == 1
