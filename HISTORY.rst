@@ -63,3 +63,4 @@
 * Correct random row choice for MSSQL (Joe Francis)
 * Adjust sequences only for specified schemas (R Vrajmohan)
 * Fix for arrays of ENUM (Federico Bertola)
+* Allow tables and schemas in config file (Alex Codreanu)
