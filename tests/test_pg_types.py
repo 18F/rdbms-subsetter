@@ -27,6 +27,7 @@ class DummyArgs(object):
     children = 25
     config = {}
     tables = []
+    schema = []
     exclude_tables = []
     full_tables = []
     buffer = 1000
