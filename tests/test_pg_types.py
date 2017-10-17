@@ -57,6 +57,7 @@ TABLE_DEFINITIONS = [
     """CREATE TABLE moody_cat (name text,
         current_mood mood,
         possible_moods mood[])""",
+    "CREATE TABLE nameful_cat (name text, more_names text[])",
 ]
 
 
@@ -67,16 +68,24 @@ def insert_data(curs):
                    ('Agamemnon', 'grumpy'), ):
         curs.execute("INSERT INTO cat VALUES (%s, %s)", params)
     # array-of-enums throws error
-    # for params in (('Buzz', 'hungry', 'hungry', 'grumpy'),
-    #                ('Fuzz', 'happy', 'happy', 'hungry'),
-    #                ('Suzz', 'happy', 'happy', 'grumpy'),
-    #                ('Agamemnon', 'grumpy', 'hungry', 'grumpy'), ):
-    #     # param substitution syntax not working here -
-    #     # fallback to string templating
-    #     template = """INSERT INTO moody_cat VALUES ('%s', '%s',
-    #         ARRAY['%s'::mood, '%s'::mood])"""
-    #     query = template % params
-    #     curs.execute(query)
+    for params in (('Buzz', 'hungry', 'hungry', 'grumpy'),
+                   ('Fuzz', 'happy', 'happy', 'hungry'),
+                   ('Suzz', 'happy', 'happy', 'grumpy'),
+                   ('Agamemnon', 'grumpy', 'hungry', 'grumpy'), ):
+        # param substitution syntax not working  -
+        # fallback to string templating
+        template = """INSERT INTO moody_cat VALUES ('%s', '%s',
+            ARRAY['%s'::mood, '%s'::mood])"""
+        query = template % params
+        curs.execute(query)
+    for params in (('Buzz', 'Space-kitty', 'Pitons'),
+                   ('Fuzz', 'The Paw', 'Nosy'),
+                   ('Suzz', 'Laptop', 'Cowcat'),
+                   ('Agamemnon', 'Your Majesty', ''), ):
+        template = """INSERT INTO nameful_cat VALUES ('%s',
+            ARRAY['%s', '%s'])"""
+        query = template % params
+        curs.execute(query)
 
 
 @pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
@@ -107,19 +116,27 @@ def results(src_url, dest_url, arguments):
 def test_enum_type(pg_data):
     args_with_scalar_enum = DummyArgs()
     args_with_scalar_enum.tables = ['cat', ]
-    (src, dest) = results(*pg_data, dummy_args)
+    (src, dest) = results(*pg_data, args_with_scalar_enum)
     dest_curs = dest.conn.connection.cursor()
     dest_curs.execute("SELECT * FROM cat")
     cats = dest_curs.fetchall()
     assert len(cats) == 1
 
+@pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
+def test_array_of_text(pg_data):
+    args_with_array_text = DummyArgs()
+    args_with_array_text.tables = ['nameful_cat', ]
+    (src, dest) = results(*pg_data, args_with_array_text)
+    dest_curs = dest.conn.connection.cursor()
+    dest_curs.execute("SELECT * FROM nameful_cat")
+    cats = dest_curs.fetchall()
+    assert len(cats) == 1
 
-@pytest.mark.skip  # https://github.com/18F/rdbms-subsetter/issues/22
 @pytest.mark.skipif(PG_CTL_MISSING, reason='PostgreSQL not installed locally')
 def test_array_of_enums(pg_data):
     args_with_array_enum = DummyArgs()
     args_with_array_enum.tables = ['moody_cat', ]
-    (src, dest) = results(*pg_data, dummy_args)
+    (src, dest) = results(*pg_data, args_with_array_enum)
     dest_curs = dest.conn.connection.cursor()
     dest_curs.execute("SELECT * FROM moody_cat")
     cats = dest_curs.fetchall()

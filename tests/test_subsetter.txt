@@ -1,0 +1,7 @@
+>>> from subsetter import hashable
+
+>>> hashable(('a', 'b', 'c'))
+('a', 'b', 'c')
+>>> hashable(('apple', ['banana', 'citrus'], 'd'))
+('apple', ('banana', 'citrus'), 'd')
+
