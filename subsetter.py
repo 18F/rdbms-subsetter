@@ -65,15 +65,14 @@ import json
 import logging
 import math
 import random
-import re
 import types
 from collections import OrderedDict, deque
 
 import sqlalchemy as sa
 from blinker import signal
-from sqlalchemy import cast
-from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.engine.reflection import Inspector
+
+from dialects.postgres import fix_postgres_array_of_enum
 
 # Python2 has a totally different definition for ``input``; overriding it here
 try:
@@ -240,7 +239,8 @@ class Db(object):
                     continue
                 tbl.db = self
 
-                self.fix_postgres_array_of_enum(tbl)
+                if self.engine.name == 'postgresql':
+                    fix_postgres_array_of_enum(self.conn, tbl)
 
                 # TODO: Replace all these monkeypatches with an instance assigment
                 tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
@@ -276,28 +276,6 @@ class Db(object):
                 fk['constrained_table'] = tbl_name  # TODO: check against constrained_table
                 self.tables[(fk['referred_schema'], fk['referred_table']
                              )].child_fks.append(fk)
-
-    def fix_postgres_array_of_enum(self, tbl):
-        "Change type of ENUM[] columns to a custom type"
-        if self.engine.name == 'postgresql':
-            from sqlalchemy.dialects.postgresql import ENUM
-
-            for col in tbl.c:
-                col_str = str(col.type)
-                if col_str.endswith('[]'):  # this is an array
-                    enum_name = col_str[:-2]
-                    try:  # test if 'enum_name' is an enum
-                        self.conn.execute('''
-                                SELECT enum_range(NULL::%s);
-                            ''' % enum_name).fetchone()
-                        # create type caster
-                        tbl.c[col.name].type = ArrayOfEnum(ENUM(name=
-                                                                enum_name))
-                    except sa.exc.ProgrammingError as enum_excep:
-                        if 'does not exist' in str(enum_excep):
-                            pass  # Must not have been an enum
-                        else:
-                            raise
 
     def __repr__(self):
         return "Db('%s')" % self.sqla_conn
@@ -661,27 +639,6 @@ def generate():
     if source.confirm():
         source.create_subset_in(target)
     update_sequences(source, target, schemas, args.tables, args.exclude_tables)
-
-
-class ArrayOfEnum(ARRAY):
-    def bind_expression(self, bindvalue):
-        return cast(bindvalue, self)
-
-    def result_processor(self, dialect, coltype):
-        super_rp = super(ArrayOfEnum, self).result_processor(dialect, coltype)
-
-        def handle_raw_string(value):
-            # Interprets PostgreSQL's array syntax in terms of a list
-            if value is None:
-                return []
-            inner = re.match(r"^{(.*)}$", value).group(1)
-            return inner.split(",")
-
-        def process(value):
-            # Convert array to Python objects
-            return super_rp(handle_raw_string(value))
-
-        return process
 
 
 def hashable(raw):
