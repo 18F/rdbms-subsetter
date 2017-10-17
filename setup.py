@@ -4,9 +4,9 @@ import os
 import sys
 
 try:
-    from setuptools import setup
+    from setuptools import setup, find_packages
 except ImportError:
-    from distutils.core import setup
+    from distutils.core import setup, find_packages
 
 if sys.argv[-1] == 'publish':
     # Clean existing build artifacts
@@ -49,6 +49,7 @@ setup(
         'Topic :: Software Development :: Testing',
     ],
     py_modules=['subsetter'],
+    packages=find_packages(include=['dialects']),
     entry_points={
         'console_scripts': [
             'rdbms-subsetter = subsetter:generate',
