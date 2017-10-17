@@ -57,10 +57,15 @@
 * documentation bug cleanup (jmcarp)
 * use `coverage` (jmcarp)
 
-0.2.6 (unreleased)
+0.2.6 (2017-10-17)
 ++++++++++++++++++
 
 * Correct random row choice for MSSQL (Joe Francis)
 * Adjust sequences only for specified schemas (R Vrajmohan)
 * Fix for arrays of ENUM (Federico Bertola)
 * Allow tables and schemas in config file (Alex Codreanu)
+
+0.2.6.1 (2017-10-17)
+++++++++++++++++++++
+
+* Fixed bug in packaging
