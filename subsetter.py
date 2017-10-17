@@ -72,6 +72,8 @@ import sqlalchemy as sa
 from blinker import signal
 from sqlalchemy.engine.reflection import Inspector
 
+from dialects.postgres import fix_postgres_array_of_enum
+
 # Python2 has a totally different definition for ``input``; overriding it here
 try:
     input = raw_input
@@ -225,8 +227,8 @@ class Db(object):
         self.tables = OrderedDict()
 
         for schema in self.schemas:
-            meta = sa.MetaData(bind=self.engine
-                               )  # excised schema=schema to prevent errors
+            meta = sa.MetaData(
+                bind=self.engine)  # excised schema=schema to prevent errors
             meta.reflect(schema=schema)
             for tbl in meta.sorted_tables:
                 if args.tables and not _table_matches_any_pattern(
@@ -236,6 +238,10 @@ class Db(object):
                                               self.args.exclude_tables):
                     continue
                 tbl.db = self
+
+                if self.engine.name == 'postgresql':
+                    fix_postgres_array_of_enum(self.conn, tbl)
+
                 # TODO: Replace all these monkeypatches with an instance assigment
                 tbl.find_n_rows = types.MethodType(_find_n_rows, tbl)
                 tbl.random_row_func = types.MethodType(_random_row_func, tbl)
@@ -322,7 +328,7 @@ class Db(object):
         logging.debug('create_row_in %s:%s ' %
                       (target.name, target.pk_val(source_row)))
 
-        pks = tuple((source_row[key] for key in target.pk))
+        pks = hashable((source_row[key] for key in target.pk))
         row_exists = pks in target.pending or pks in target.done
         logging.debug("Row exists? %s" % str(row_exists))
         if row_exists and not prioritized:
@@ -372,7 +378,7 @@ class Db(object):
                             self.create_row_in(source_referred_row, target_db,
                                                target_referred)
 
-            pks = tuple((source_row[key] for key in target.pk))
+            pks = hashable((source_row[key] for key in target.pk))
             target.n_rows += 1
 
             if self.args.buffer == 0:
@@ -440,7 +446,6 @@ class Db(object):
                     logging.warn("requested %s:%s not found in source db,"
                                  "could not create" % (source.name, pk))
 
-        #import pdb; pdb.set_trace()
         while True:
             targets = sorted(target_db.tables.values(),
                              key=lambda t: t.completeness_score())
@@ -634,6 +639,20 @@ def generate():
     if source.confirm():
         source.create_subset_in(target)
     update_sequences(source, target, schemas, args.tables, args.exclude_tables)
+
+
+def hashable(raw):
+    """If `raw` contains nested lists, convert them to tuples
+
+    >>> hashable(('a', 'b', 'c'))
+    ('a', 'b', 'c')
+    >>> hashable(('a', ['b', 'c'], 'd'))
+    ('a', ('b', 'c'), 'd')
+    """
+
+    result = tuple(hashable(itm) if isinstance(itm, list) else itm
+                   for itm in raw)
+    return result
 
 
 if __name__ == '__main__':
