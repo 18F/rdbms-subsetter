@@ -68,7 +68,6 @@ def insert_data(curs):
                    ('Suzz', 'happy'),
                    ('Agamemnon', 'grumpy'), ):
         curs.execute("INSERT INTO cat VALUES (%s, %s)", params)
-    # array-of-enums throws error
     for params in (('Buzz', 'hungry', 'hungry', 'grumpy'),
                    ('Fuzz', 'happy', 'happy', 'hungry'),
                    ('Suzz', 'happy', 'happy', 'grumpy'),
