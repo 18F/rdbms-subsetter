@@ -56,7 +56,8 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
-            py.test --cov=subsetter --cov=dialects --cov-report=xml
+            # py.test --cov=subsetter --cov=dialects --cov-report=xml
+            py.test --cov --cov-report=xml
 
 
       - store_artifacts:
