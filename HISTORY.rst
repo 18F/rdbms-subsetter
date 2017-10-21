@@ -69,3 +69,8 @@
 ++++++++++++++++++++
 
 * Fixed bug in packaging
+
+0.2.6.2 (2017-10-17)
+++++++++++++++++++++
+
+* Bugfix in array-of-enum handling
