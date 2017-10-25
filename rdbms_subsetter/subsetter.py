@@ -72,7 +72,7 @@ import sqlalchemy as sa
 from blinker import signal
 from sqlalchemy.engine.reflection import Inspector
 
-from rdbms_subsetter.postgres import fix_postgres_array_of_enum
+from dialects.postgres import fix_postgres_array_of_enum
 
 # Python2 has a totally different definition for ``input``; overriding it here
 try:
