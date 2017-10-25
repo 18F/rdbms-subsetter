@@ -56,7 +56,7 @@ jobs:
           name: run tests
           command: |
             . venv/bin/activate
-            py.test --cov=dialects --cov=rdbms_subsetter --cov-report=xml
+            py.test --cov --cov-config .coveragerc --cov-report=xml
 
 
       - store_artifacts:

@@ -48,7 +48,7 @@ setup(
         'Topic :: Database',
         'Topic :: Software Development :: Testing',
     ],
-    packages=find_packages(include=['dialects', 'rdbms_subsetter']),
+    packages=find_packages(include=['rdbms_subsetter']),
     entry_points={
         'console_scripts': [
             'rdbms-subsetter = subsetter:generate',
