@@ -1,4 +1,4 @@
-from subsetter import merge_config_args
+from rdbms_subsetter.subsetter import merge_config_args
 
 class DummyArgs(object):
     logarithmic = False

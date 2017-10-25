@@ -8,7 +8,7 @@ import pytest
 import pytest_postgresql
 from pytest_postgresql import factories
 
-from subsetter import Db
+from rdbms_subsetter.subsetter import Db
 
 try:
     subprocess.check_output('command -v pg_ctl', shell=True)

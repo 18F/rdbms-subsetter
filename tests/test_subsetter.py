@@ -8,7 +8,7 @@ import tempfile
 
 import pytest
 
-from subsetter import Db
+from rdbms_subsetter.subsetter import Db
 
 TABLE_DEFINITIONS = [
     "CREATE TABLE state (abbrev, name)",

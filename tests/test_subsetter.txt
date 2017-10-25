@@ -1,4 +1,4 @@
->>> from subsetter import hashable
+>>> from rdbms_subsetter.subsetter import hashable
 
 >>> hashable(('a', 'b', 'c'))
 ('a', 'b', 'c')
