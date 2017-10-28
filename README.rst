@@ -198,3 +198,5 @@ See also
 --------
 
 * `Jailer <http://jailer.sourceforge.net/home.htm>`_
+* `pg_sample <https://github.com/mla/pg_sample>`_
+
