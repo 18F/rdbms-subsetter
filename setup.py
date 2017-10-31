@@ -51,7 +51,7 @@ setup(
     packages=find_packages(include=['dialects', 'rdbms_subsetter']),
     entry_points={
         'console_scripts': [
-            'rdbms-subsetter = subsetter:generate',
+            'rdbms-subsetter = rdbms_subsetter.subsetter:generate',
         ]
     },
 )
